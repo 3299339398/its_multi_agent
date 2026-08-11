@@ -1,0 +1,22 @@
+[
+  {
+    "role": "system",
+    "content": "你是一个有记忆的智能体助手，请基于上下文历史会话用户问题 (会话ID 666)"
+  },
+  {
+    "role": "user",
+    "content": "你好!"
+  },
+  {
+    "role": "assistant",
+    "content": "您好，请问有什么可以帮助您嘛"
+  },
+  {
+    "role": "user",
+    "content": "你好!"
+  },
+  {
+    "role": "assistant",
+    "content": "您好，请问有什么可以帮助您嘛"
+  }
+]

@@ -1,0 +1,69 @@
+/* Reset */
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #f3f5f7;
+  color: #202a35;
+}
+
+/* Scrollbar styling for Webkit */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f3f5f7; 
+}
+ 
+::-webkit-scrollbar-thumb {
+  background: #cbd3db; 
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #176b5b; 
+}
+
+/* Shared ITS light-green product theme. */
+:root {
+  --ui-canvas: #f3f5f7;
+  --ui-surface: #ffffff;
+  --ui-surface-subtle: #f6f8f9;
+  --ui-ink: #202a35;
+  --ui-muted: #66717f;
+  --ui-line: #dce2e8;
+  --ui-accent: #176b5b;
+  --ui-accent-soft: #e8f2ef;
+}
+
+.app-wrapper { background: var(--ui-canvas) !important; color: var(--ui-ink) !important; }
+.sidebar { background: #f8fafb !important; border-right-color: var(--ui-line) !important; box-shadow: 2px 0 10px rgba(31,42,55,.06) !important; }
+.sidebar .logo { background: none !important; color: var(--ui-accent) !important; -webkit-text-fill-color: currentColor !important; border-bottom-color: var(--ui-line) !important; }
+.el-menu, .el-menu--vertical { background-color: #f8fafb !important; }
+.el-menu-item { color: #596574 !important; }
+.el-menu-item:hover { background-color: #eef2f4 !important; color: var(--ui-ink) !important; }
+.el-menu-item.is-active { background-color: var(--ui-accent-soft) !important; color: #115a4c !important; }
+.account-panel { border-top-color: var(--ui-line) !important; }
+.account-panel .account-copy strong { color: var(--ui-ink) !important; }
+.account-panel .account-copy span { color: var(--ui-muted) !important; }
+.main-container { background: var(--ui-surface) !important; background-image: none !important; }
+.knowledge-container, .chat-container { color: var(--ui-ink) !important; }
+.stat-card, .upload-card, .documents-section, .chat-box { background: var(--ui-surface) !important; border-color: var(--ui-line) !important; box-shadow: 0 1px 2px rgba(23,33,43,.05) !important; }
+.eyebrow, .upload-icon { color: var(--ui-accent) !important; }
+.knowledge-container h2, .knowledge-container h3, .knowledge-container strong, .file-cell strong { color: var(--ui-ink) !important; }
+.subtitle, .card-header span, .section-heading span, .stat-card span, .upload-area .el-upload__text, .upload-area .el-upload__tip { color: var(--ui-muted) !important; }
+.upload-area .el-upload-dragger { background: var(--ui-surface-subtle) !important; border-color: #a9c7c0 !important; }
+.upload-area .el-upload-dragger:hover { border-color: var(--ui-accent) !important; background: #f0f7f5 !important; }
+.document-table { --el-table-bg-color: #fff !important; --el-table-tr-bg-color: #fff !important; --el-table-header-bg-color: #f6f8f9 !important; --el-table-border-color: var(--ui-line) !important; --el-table-row-hover-bg-color: #f0f7f5 !important; }
+.document-table th.el-table__cell { color: var(--ui-muted) !important; }
+.el-button--primary { --el-button-bg-color: var(--ui-accent); --el-button-border-color: var(--ui-accent); --el-button-hover-bg-color: #115a4c; --el-button-hover-border-color: #115a4c; }
+.el-input__wrapper, .el-textarea__inner, .el-select__wrapper { box-shadow: 0 0 0 1px var(--ui-line) inset !important; }
+.el-input__wrapper.is-focus, .el-textarea__inner:focus, .el-select__wrapper.is-focused { box-shadow: 0 0 0 1px var(--ui-accent) inset !important; }
+.message-item .el-avatar { background-color: var(--ui-accent) !important; }
+.messages .empty-state { color: var(--ui-muted) !important; }
+.message-item.user .bubble { background-color: var(--ui-accent) !important; color: #fff !important; }
+.message-item.assistant .bubble { background-color: var(--ui-surface-subtle) !important; border-color: var(--ui-line) !important; color: var(--ui-ink) !important; }
+.message-item .bubble a { color: var(--ui-accent) !important; }
+.input-area { background-color: var(--ui-surface-subtle) !important; border-top-color: var(--ui-line) !important; }
+.input-area .el-textarea__inner { background-color: #fff !important; border-color: var(--ui-line) !important; color: var(--ui-ink) !important; }
