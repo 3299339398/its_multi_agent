@@ -1,0 +1,16 @@
+.git
+.idea
+.venv
+**/__pycache__
+**/*.pyc
+**/node_modules
+**/dist
+**/.vite
+backend/app/.env
+backend/knowledge/.env
+backend/app/logs
+backend/app/user_memories
+backend/app/data
+backend/knowledge/chroma_kb
+backend/knowledge/data/tmp
+backend/knowledge/data/*.db

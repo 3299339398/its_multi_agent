@@ -1,0 +1,24 @@
+[
+  {
+    "id": "knowledge-basic-001",
+    "input": "公司内部差旅制度规定的住宿标准是多少？",
+    "expected_source_origins": ["knowledge"],
+    "must_include": ["住宿"]
+  },
+  {
+    "id": "service-station-001",
+    "input": "帮我找最近的联想服务站",
+    "user_context": {"origin": {"latitude": 39.983, "longitude": 116.316, "coordinate_system": "wgs84"}},
+    "expected_agents": ["主调度智能体"],
+    "expected_tools": ["query_service_station_and_navigate"],
+    "must_include": ["服务站"]
+  },
+  {
+    "id": "mixed-routing-001",
+    "input": "按公司内部电脑报修制度说明如何申请维修，然后导航去最近的联想服务站。",
+    "user_context": {"origin": {"latitude": 39.983, "longitude": 116.316, "coordinate_system": "wgs84"}},
+    "expected_source_origins": ["knowledge"],
+    "expected_tools": ["query_service_station_and_navigate"],
+    "must_include": ["服务站"]
+  }
+]

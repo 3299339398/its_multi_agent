@@ -1,0 +1,46 @@
+name: Frontend quality
+
+on:
+  pull_request:
+    paths:
+      - 'its_multi_agent/front/knowlege_platform_ui/**'
+      - 'its_multi_agent/front/agent_web_ui/**'
+      - '.github/workflows/knowledge-frontend.yml'
+  push:
+    paths:
+      - 'its_multi_agent/front/knowlege_platform_ui/**'
+      - 'its_multi_agent/front/agent_web_ui/**'
+      - '.github/workflows/knowledge-frontend.yml'
+
+jobs:
+  chat:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: its_multi_agent/front/agent_web_ui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: its_multi_agent/front/agent_web_ui/package-lock.json
+      - run: npm ci
+      - run: npm run check
+      - run: npm audit --omit=dev --audit-level=high
+
+  quality:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: its_multi_agent/front/knowlege_platform_ui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: its_multi_agent/front/knowlege_platform_ui/package-lock.json
+      - run: npm ci
+      - run: npm run check
+      - run: npm audit --omit=dev --audit-level=high

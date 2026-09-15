@@ -1,0 +1,60 @@
+name: Backend and Harness quality
+
+on:
+  push:
+    paths:
+      - 'its_multi_agent/backend/app/**'
+      - 'its_multi_agent/backend/knowledge/**'
+      - 'its_multi_agent/harness/**'
+      - 'its_multi_agent/HARNESS_ENGINEERING.md'
+      - '.github/workflows/app-harness.yml'
+  pull_request:
+    paths:
+      - 'its_multi_agent/backend/app/**'
+      - 'its_multi_agent/backend/knowledge/**'
+      - 'its_multi_agent/harness/**'
+      - 'its_multi_agent/HARNESS_ENGINEERING.md'
+      - '.github/workflows/app-harness.yml'
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      USER_SQLITE_PATH: ${{ runner.temp }}/users.db
+      SESSION_SQLITE_PATH: ${{ runner.temp }}/sessions.db
+      MODEL_PROFILE_SQLITE_PATH: ${{ runner.temp }}/models.db
+      MEMORY_SQLITE_PATH: ${{ runner.temp }}/memory.db
+      TASK_SQLITE_PATH: ${{ runner.temp }}/tasks.db
+      MEMORY_BACKEND: sqlite
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: its_multi_agent/backend/app/requirements.txt
+      - name: Install dependencies
+        run: pip install -r its_multi_agent/backend/app/requirements.txt
+      - name: Run application tests
+        run: python -X utf8 -m unittest discover -s its_multi_agent/backend/app/tests
+      - name: Run Harness contracts
+        run: python -X utf8 -m unittest its_multi_agent.harness.test_harness
+
+  knowledge:
+    runs-on: ubuntu-latest
+    env:
+      DOCUMENT_REGISTRY_PATH: ${{ runner.temp }}/documents.db
+      LEXICAL_INDEX_PATH: ${{ runner.temp }}/lexical.db
+      INGESTION_TASK_DB_PATH: ${{ runner.temp }}/ingestion-tasks.db
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: its_multi_agent/backend/knowledge/requirements.txt
+      - name: Install knowledge dependencies
+        run: pip install -r its_multi_agent/backend/knowledge/requirements.txt
+      - name: Run knowledge tests
+        run: python -X utf8 -m unittest discover -s its_multi_agent/backend/knowledge/test

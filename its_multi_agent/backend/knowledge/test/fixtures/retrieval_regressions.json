@@ -1,0 +1,33 @@
+{
+  "description": "Deterministic synthetic regression labels; not production retrieval accuracy.",
+  "dedup": [
+    {"label": "shared_prefix_distinct_answers", "common_prefix_repeats": 12, "documents": [
+      {"content": "ZX-81: reset", "metadata": {"title": "Manual"}},
+      {"content": "ZX-82: replace", "metadata": {"title": "Manual"}}
+    ], "expected_count": 2},
+    {"label": "same_text_distinct_sources_and_pages", "common_prefix_repeats": 0, "documents": [
+      {"content": "Evidence", "metadata": {"title": "Manual", "document_hash": "a", "page": 1}},
+      {"content": "Evidence", "metadata": {"title": "Manual", "document_hash": "b", "page": 1}},
+      {"content": "Evidence", "metadata": {"title": "Manual", "document_hash": "a", "page": 2}}
+    ], "expected_count": 3},
+    {"label": "exact_duplicate", "common_prefix_repeats": 0, "documents": [
+      {"content": "Evidence", "metadata": {"title": "Manual"}},
+      {"content": "Evidence", "metadata": {"title": "Manual"}}
+    ], "expected_count": 1}
+  ],
+  "rewrites": {
+    "original": "ZX-81 E204 below 30C wait 5 minutes",
+    "variants": [
+      {"value": "Troubleshoot ZX-81 E204 below 30C wait 5 minutes", "valid": true},
+      {"value": "ZX-82 E204 below 30C wait 5 minutes", "valid": false},
+      {"value": "ZX-81 E205 below 30C wait 5 minutes", "valid": false},
+      {"value": "ZX-81 E204 below 40C wait 5 minutes", "valid": false},
+      {"value": "ZX-81 E204 above 30C wait 5 minutes", "valid": false},
+      {"value": "ZX-81 below 30C wait 5 minutes", "valid": false},
+      {"value": "ZX-81 E204 E999 below 30C wait 5 minutes", "valid": false},
+      {"value": null, "valid": false},
+      {"value": 123, "valid": false},
+      {"value": {"query": "ZX-81"}, "valid": false}
+    ]
+  }
+}

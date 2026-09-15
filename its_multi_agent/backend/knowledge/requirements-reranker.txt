@@ -1,0 +1,2 @@
+# Optional. Install only when CROSS_ENCODER_MODEL points to a local or downloadable model.
+sentence-transformers>=3.0,<6

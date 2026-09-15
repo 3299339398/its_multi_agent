@@ -1,0 +1,42 @@
+{
+  "provenance": "Synthetic business scenarios authored for regression testing; not customer data or production accuracy labels.",
+  "sources": {
+    "travel-2026": {"source_name": "差旅制度 2026", "page": 2, "excerpt": "本公司差旅制度自 2026 年 1 月 1 日生效：住宿每晚不超过 500 元，须提交住宿发票。"},
+    "travel-conflict": {"source_name": "差旅制度副本", "page": 2, "excerpt": "本公司 2026 年差旅住宿每晚不超过 800 元。副本未注明适用地区或审批记录。"},
+    "zx81-manual": {"source_name": "ZX-81 维修手册 v2.0", "page": 7, "excerpt": "ZX-81 v2.0 出现 E204 时，先断开电源再检查硬盘连接，禁止带电拔插。"},
+    "zx82-manual": {"source_name": "ZX-82 维修手册 v2.0", "page": 7, "excerpt": "ZX-82 v2.0 的 E204 处理流程为复位控制器，此流程不适用于 ZX-81。"},
+    "delivery-a": {"source_name": "内部项目 A 计划", "page": 1, "excerpt": "项目 A 的计划交付日为 2026 年 10 月 1 日，前提是客户在 9 月 15 日前完成验收。"},
+    "public-tax": {"source_name": "虚构公开政策评测材料", "url": "https://example.org/tax-policy", "excerpt": "仅供测试的公开税务规则：住宿费用需提供有效发票；此材料不规定任何公司的内部住宿限额。"},
+    "warranty-36": {"source_name": "产品保修手册", "page": 3, "excerpt": "ZX-81 主机保修期为 36 个月，电池保修期为 12 个月。"}
+  },
+  "cases": [
+    {"id": "private-latest", "question": "公司的最新差旅制度是什么？", "expected_rule": "knowledge", "expected_route": "knowledge", "expected_action": "answer", "relevant_source_ids": ["travel-2026"], "answer_terms": [["500", "五百"], ["发票"]]},
+    {"id": "private-now", "question": "我们项目现在的交付日期和条件是什么？", "expected_rule": "knowledge", "expected_route": "knowledge", "expected_action": "answer", "relevant_source_ids": ["delivery-a"], "answer_terms": [["10 月 1 日", "10月1日"], ["9 月 15 日", "9月15日"], ["验收"]]},
+    {"id": "private-english", "question": "What is our latest internal expense policy?", "expected_rule": "knowledge", "expected_route": "knowledge"},
+    {"id": "public-weather", "question": "今天北京天气如何？", "expected_rule": "web", "expected_route": "web"},
+    {"id": "public-stock", "question": "微软公司今天股价是多少？", "expected_rule": "web", "expected_route": "web"},
+    {"id": "public-currency", "question": "人民币今天汇率是多少？", "expected_rule": "web", "expected_route": "web"},
+    {"id": "public-policy", "question": "国家最新税收政策是什么？", "expected_rule": "web", "expected_route": "web"},
+    {"id": "public-version", "question": "latest Python release", "expected_rule": "web", "expected_route": "web"},
+    {"id": "mixed-policy", "question": "对比公司差旅制度和国家最新税收政策", "expected_rule": "semantic", "expected_route": "mixed", "expected_action": "answer", "relevant_source_ids": ["travel-2026", "public-tax"], "answer_terms": [["500"], ["发票"], ["内部", "公司"]]},
+    {"id": "ambiguous-policy", "question": "最新报销制度是什么？", "expected_rule": "semantic", "expected_route": "clarify", "expected_action": "abstain"},
+    {"id": "attachment-question", "question": "根据附件解释 ZX-81 的保修期", "has_attachments": true, "expected_rule": "attachment", "expected_route": "attachment", "expected_action": "answer", "relevant_source_ids": ["warranty-36"], "answer_terms": [["36"], ["12"]]},
+    {"id": "attachment-missing", "question": "根据附件解释 ZX-81 的保修期", "expected_rule": "clarify", "expected_route": "clarify", "expected_action": "abstain"},
+    {"id": "attachment-public", "question": "对比附件与国家最新税收政策", "has_attachments": true, "expected_rule": "semantic", "expected_route": "mixed"},
+    {"id": "unresolved-pronoun", "question": "它现在还适用吗？", "expected_rule": "clarify", "expected_route": "clarify", "expected_action": "abstain"},
+    {"id": "private-follow-up", "question": "它现在还适用吗？", "previous_question": "公司的差旅制度是什么？", "expected_rule": "semantic", "expected_route": "knowledge"},
+    {"id": "model-follow-up", "question": "它的 E204 怎么处理？", "previous_question": "公司 ZX-81 v2.0 手册在哪里？", "expected_rule": "semantic", "expected_route": "knowledge", "expected_action": "answer", "relevant_source_ids": ["zx81-manual"], "answer_terms": [["断电", "断开电源"], ["禁止", "不能", "不要"]]},
+    {"id": "model-explicit", "question": "公司 ZX-81 v2.0 手册的 E204 怎么处理？", "expected_rule": "knowledge", "expected_route": "knowledge", "expected_action": "answer", "relevant_source_ids": ["zx81-manual"], "answer_terms": [["断电", "断开电源"], ["硬盘"]]},
+    {"id": "wrong-model-only", "question": "公司 ZX-83 v2.0 手册的 E204 怎么处理？", "available_source_ids": ["zx82-manual"], "expected_rule": "knowledge", "expected_route": "knowledge", "expected_action": "abstain"},
+    {"id": "private-no-result", "question": "公司未收录的薪资明细是什么？", "available_source_ids": [], "expected_rule": "knowledge", "expected_route": "knowledge", "expected_action": "abstain"},
+    {"id": "private-conflict", "question": "公司 2026 年差旅住宿限额是多少？", "available_source_ids": ["travel-2026", "travel-conflict"], "expected_rule": "knowledge", "expected_route": "knowledge", "expected_action": "abstain"},
+    {"id": "no-web", "question": "不要联网，解释 ZX-81 的 E204 故障", "expected_rule": "semantic", "expected_route": "knowledge"},
+    {"id": "public-fallback", "question": "先查知识库中的 Python 列表资料，没有就查官方文档", "expected_rule": "semantic", "expected_route": "web"},
+    {"id": "explicit-knowledge", "question": "查询知识库中的产品保修范围", "expected_rule": "knowledge", "expected_route": "knowledge"},
+    {"id": "greeting", "question": "你好", "expected_rule": "direct", "expected_route": "direct", "expected_action": "answer"},
+    {"id": "writing", "question": "帮我写一封请假邮件", "expected_rule": "semantic", "expected_route": "direct", "expected_action": "answer"},
+    {"id": "programming", "question": "解释 Python 列表与元组的区别", "expected_rule": "semantic", "expected_route": "direct", "expected_action": "answer"},
+    {"id": "service-station", "question": "帮我找附近的维修服务站", "expected_rule": "service", "expected_route": "service"},
+    {"id": "no-web-private", "question": "不要联网，只查公司最新差旅制度", "expected_rule": "knowledge", "expected_route": "knowledge"}
+  ]
+}
