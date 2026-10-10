@@ -1,1 +1,1 @@
-"""Map and coordinate-system utilities."""
+"""地图与坐标系工具。"""

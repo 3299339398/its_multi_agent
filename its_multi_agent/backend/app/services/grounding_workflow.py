@@ -1,4 +1,4 @@
-"""Bounded retrieval and evidence review before user-visible answer generation."""
+"""在生成用户可见的答案前，执行有范围限制的检索与证据审查。"""
 
 import asyncio
 import hashlib
@@ -19,6 +19,7 @@ from its_multi_agent.backend.app.services.answer_routing import (
     RoutePlan, attachment_question, identifiers, private_question, route_by_rules, service_requested, validate_plan,
 )
 from its_multi_agent.backend.app.services.conversation_memory import memory_from_history, memory_quotes
+from its_multi_agent.backend.app.services.context_budget import ContextBudgeter, TokenLimits, context_budgeter
 
 logger = logging.getLogger(__name__)
 
@@ -36,10 +37,11 @@ class GroundingOutcome:
     sources: list[dict] = field(default_factory=list)
     allowed_tools: list[str] = field(default_factory=list)
     reply: str = ""
+    grounding_trace: list[dict] = field(default_factory=list)
 
 
 def _json_object_content(content: str, output_type):
-    """Parse provider JSON output and validate it against the local contract."""
+    """解析模型服务返回的 JSON，并按本地数据契约校验。"""
     raw = (content or "").strip()
     if raw.startswith("```"):
         raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.IGNORECASE | re.DOTALL).strip()
@@ -87,7 +89,7 @@ GROUNDED_ANSWER_INSTRUCTIONS = """
 
 
 def normalize_sources(payload: dict, origin: str) -> list[dict]:
-    """Normalize bounded, inspectable evidence; malformed results fail closed."""
+    """规范化证据并限制规模，过滤格式不合法的结果以供后续审查。"""
     sources: list[dict] = []
     seen: set[str] = set()
     budget = 24000
@@ -143,24 +145,58 @@ def normalize_sources(payload: dict, origin: str) -> list[dict]:
 
 
 class GroundingWorkflow:
-    def __init__(self, model):
+    def __init__(self, model, *, token_limits: TokenLimits | None = None,
+                 model_name: str | None = None):
         self.model = model
+        self.token_limits = token_limits
+        self.model_name = model_name or getattr(model, "model", "") or ""
+        self._trace: list[dict] = []
+
+    def _budget_messages(self, agent, messages: list[dict], protected_query: str) -> list[dict]:
+        if self.token_limits is None:
+            return messages
+        fitted, _report = context_budgeter.fit(
+            messages, agent=agent, model_name=self.model_name,
+            limits=self.token_limits, protected_query=protected_query,
+        )
+        return fitted
+
+    def _record(self, phase: str, status: str, *, route: str = '', origin: str | None = None,
+                source_ids: list[str] | None = None, detail: str = '') -> None:
+        self._trace.append({
+            "phase": phase, "status": status, "route": route,
+            "origin": origin, "source_ids": list(source_ids or [])[:8],
+            "detail": detail[:500],
+        })
+
+    def _outcome(self, route: str, status: str = "ready", *, sources=None,
+                 allowed_tools=None, reply: str = '') -> GroundingOutcome:
+        return GroundingOutcome(
+            route, status, list(sources or []), list(allowed_tools or []), reply,
+            list(self._trace),
+        )
 
     async def _structured(self, instructions, data, output_type):
-        # DeepSeek's OpenAI-compatible endpoint accepts JSON mode, but not the
-        # JSON Schema response_format emitted by Agents SDK output_type.
+        # DeepSeek 的 OpenAI 兼容端点支持 JSON 模式，但不支持
+        # Agents SDK 的 output_type 所生成的 JSON Schema response_format。
         if isinstance(self.model, OpenAIChatCompletionsModel):
             client = self.model._get_client()
             schema = json.dumps(output_type.model_json_schema(), ensure_ascii=False)
+            structured_instructions = (
+                instructions
+                + "\n必须只返回一个 JSON 对象，不要使用 Markdown 代码块，不要输出解释文字。"
+                + f"\nJSON 字段约束如下：{schema}"
+            )
+            request_messages = self._budget_messages(
+                Agent(name="structured-grounding", model=self.model, instructions=structured_instructions),
+                [{"role": "user", "content": json.dumps(data, ensure_ascii=False)}],
+                str(data.get("question") or data.get("goal") or data.get("user_question") or ""),
+            )
             response = await asyncio.wait_for(client.chat.completions.create(
                 model=self.model.model,
                 messages=[
-                    {"role": "system", "content": (
-                        instructions
-                        + "\n必须只返回一个 JSON 对象，不要使用 Markdown 代码块，不要输出解释文字。"
-                        + f"\nJSON 字段约束如下：{schema}"
-                    )},
-                    {"role": "user", "content": json.dumps(data, ensure_ascii=False)},
+                    {"role": "system", "content": structured_instructions},
+                    *request_messages,
                 ],
                 temperature=0,
                 response_format={"type": "json_object"},
@@ -171,8 +207,12 @@ class GroundingWorkflow:
 
         agent = Agent(name="查询决策检查", model=self.model, instructions=instructions,
                       output_type=output_type, model_settings=ModelSettings(temperature=0))
+        model_input = self._budget_messages(
+            agent, [{"role": "user", "content": json.dumps(data, ensure_ascii=False)}],
+            str(data.get("question") or data.get("goal") or data.get("user_question") or ""),
+        )
         result = await asyncio.wait_for(Runner.run(
-            agent, input=json.dumps(data, ensure_ascii=False), max_turns=1,
+            agent, input=model_input, max_turns=1,
             run_config=RunConfig(tracing_disabled=True),
         ), timeout=30)
         output = result.final_output
@@ -197,6 +237,8 @@ class GroundingWorkflow:
                       has_attachments: bool = False, available_tools: list[str] | None = None,
                       attachment_sources: list[dict] | None = None) -> GroundingOutcome:
         history = history or []
+        self._trace = []
+        self._record("planning", "started")
         available = set(available_tools if available_tools is not None else (
             "query_knowledge", "search_web", "query_service_station_and_navigate",
         ))
@@ -212,15 +254,17 @@ class GroundingWorkflow:
                                      has_attachments=has_attachments, previous_question=previous, memory_context=memory_context)
         except Exception as error:
             logger.warning("Route planning failed: %s", type(error).__name__, exc_info=True)
-            return GroundingOutcome("clarify", "unavailable", reply="查询范围判断服务暂时不可用，请稍后重试。")
+            self._record("planning", "failed", detail="查询范围判断服务暂时不可用")
+            return self._outcome("clarify", "unavailable", reply="查询范围判断服务暂时不可用，请稍后重试。")
+        self._record("planning", "completed", route=plan.route)
         if plan.route == "clarify":
-            return GroundingOutcome("clarify", "clarify", reply=plan.clarification)
+            return self._outcome("clarify", "clarify", reply=plan.clarification)
         if plan.route == "direct" or (plan.route == "attachment" and not attachment_sources):
-            return GroundingOutcome(plan.route)
+            return self._outcome(plan.route)
         if plan.route == "service":
             if "query_service_station_and_navigate" not in available:
-                return GroundingOutcome("service", "unavailable", reply="当前未启用地图与服务站插件。")
-            return GroundingOutcome("service", allowed_tools=["query_service_station_and_navigate"])
+                return self._outcome("service", "unavailable", reply="当前未启用地图与服务站插件。")
+            return self._outcome("service", allowed_tools=["query_service_station_and_navigate"])
         use_attachments = plan.route == "attachment" or (has_attachments and attachment_question(plan.knowledge_query))
         required = {"knowledge": {"query_knowledge"}, "web": {"search_web"}, "attachment": set(),
                     "mixed": {"query_knowledge", "search_web"}}[plan.route]
@@ -229,46 +273,63 @@ class GroundingWorkflow:
         if service_requested(question):
             required.add("query_service_station_and_navigate")
         if not required.issubset(available):
-            return GroundingOutcome(plan.route, "unavailable", reply="当前未启用这个问题所需的知识库或联网搜索插件，无法核实依据。")
+            return self._outcome(plan.route, "unavailable", reply="当前未启用这个问题所需的知识库或联网搜索插件，无法核实依据。")
         sources = []
         try:
             if use_attachments:
                 sources += normalize_sources({"sources": attachment_sources or []}, "knowledge")
                 for source in sources:
                     source["origin"] = "attachment"
+                self._record("retrieval", "completed", origin="attachment",
+                             source_ids=[source["source_id"] for source in sources],
+                             detail=f"读取 {len(sources)} 条附件证据")
             elif plan.route in {"knowledge", "mixed"}:
                 sources += await self._retrieve("knowledge", plan.knowledge_query,
                                                 knowledge_space=plan.knowledge_space, domain=plan.domain)
             if plan.route in {"web", "mixed"}:
                 sources += await self._retrieve("web", plan.web_query)
             result = await self._assess(plan, question, sources)
-            # One public fallback, explicitly approved by the validated plan.
+            # 仅在已校验的计划明确允许时，执行一次公开来源检索回退。
             if (result.status == "insufficient" and plan.route == "knowledge" and plan.web_query
                     and not private_question(question) and not use_attachments and "search_web" in available):
                 sources = await self._retrieve("web", plan.web_query)
                 result = await self._assess(RoutePlan(route="web", web_query=plan.web_query), question, sources)
             if result.status == "ready" and service_requested(question):
                 result.allowed_tools = ["query_service_station_and_navigate"]
+            result.grounding_trace = list(self._trace)
             return result
         except Exception as error:
             logger.warning("Evidence workflow failed: %s", type(error).__name__)
-            return GroundingOutcome(plan.route, "unavailable", reply="查询或证据检查服务暂时不可用，尚未核实到可靠依据，请稍后重试。")
+            self._record("workflow", "failed", route=plan.route, detail="查询或证据检查服务暂时不可用")
+            return self._outcome(plan.route, "unavailable", reply="查询或证据检查服务暂时不可用，尚未核实到可靠依据，请稍后重试。")
 
     async def _retrieve(self, origin: str, query: str, *, knowledge_space="default", domain="general") -> list[dict]:
+        self._record("retrieval", "started", origin=origin)
         request = request_knowledge(query, knowledge_space=knowledge_space, domain=domain, retrieve_only=True) if origin == "knowledge" else request_web_search(query)
-        payload = await asyncio.wait_for(request, timeout=45)
-        if not isinstance(payload, dict) or payload.get("status") == "error" or payload.get("error_msg"):
-            raise ValueError("retrieval unavailable")
-        return normalize_sources(payload, origin)
+        try:
+            payload = await asyncio.wait_for(request, timeout=45)
+            if not isinstance(payload, dict) or payload.get("status") == "error" or payload.get("error_msg"):
+                raise ValueError("retrieval unavailable")
+            sources = normalize_sources(payload, origin)
+            self._record("retrieval", "completed", origin=origin,
+                         source_ids=[source["source_id"] for source in sources],
+                         detail=f"取得 {len(sources)} 条候选证据")
+            return sources
+        except Exception:
+            self._record("retrieval", "failed", origin=origin, detail="检索服务不可用")
+            raise
 
     async def _assess(self, plan: RoutePlan, question: str, sources: list[dict]) -> GroundingOutcome:
+        self._record("review", "started", route=plan.route,
+                     source_ids=[source["source_id"] for source in sources])
         origins = {source["origin"] for source in sources}
         required = identifiers((plan.knowledge_query + " " + plan.web_query).strip() or question)
         present = identifiers(" ".join(source["excerpt"] + " " + source["source_name"] for source in sources))
         mixed_covered = "web" in origins and bool(origins & {"knowledge", "attachment"})
         if not sources or not required.issubset(present) or (plan.route == "mixed" and not mixed_covered):
-            return GroundingOutcome(plan.route, "insufficient", reply="现有资料不足以回答这个问题，或缺少对应型号、版本的依据。请补充相关资料或明确查询对象。")
-        # Bound the combined mixed-source payload without privileging one origin.
+            self._record("review", "insufficient", route=plan.route, detail="候选证据未覆盖问题约束")
+            return self._outcome(plan.route, "insufficient", reply="现有资料不足以回答这个问题，或缺少对应型号、版本的依据。请补充相关资料或明确查询对象。")
+        # 限制混合来源证据的总量，避免只保留单一来源。
         sources = sources[:4] + sources[-4:] if len(sources) > 8 else sources
         review = await self.review(json.dumps({
             "user_question": question, "knowledge_question": plan.knowledge_query,
@@ -277,7 +338,10 @@ class GroundingWorkflow:
         }, ensure_ascii=False), sources)
         if review.status != "sufficient":
             prefix = "检索资料存在尚未消解的冲突。" if review.status == "conflicting" else "现有证据尚不足以完整回答。"
-            return GroundingOutcome(plan.route, review.status, reply=prefix + (review.missing_information or "请补充适用的资料或版本。"))
+            self._record("review", review.status, route=plan.route,
+                         source_ids=review.supporting_source_ids,
+                         detail=review.missing_information or "证据不充分")
+            return self._outcome(plan.route, review.status, reply=prefix + (review.missing_information or "请补充适用的资料或版本。"))
         selected = set(review.supporting_source_ids)
         known = {source["source_id"] for source in sources}
         supported = [source for source in sources if source["source_id"] in selected]
@@ -286,5 +350,8 @@ class GroundingWorkflow:
         if (not selected or not selected.issubset(known)
                 or not required.issubset(supported_ids)
                 or (plan.route == "mixed" and not ("web" in supported_origins and supported_origins & {"knowledge", "attachment"}))):
-            return GroundingOutcome(plan.route, "unverified", reply="证据引用检查未通过，暂时无法给出可靠结论。请补充资料后重试。")
-        return GroundingOutcome(plan.route, sources=supported)
+            self._record("review", "unverified", route=plan.route, source_ids=list(selected), detail="审查器引用未通过本地校验")
+            return self._outcome(plan.route, "unverified", reply="证据引用检查未通过，暂时无法给出可靠结论。请补充资料后重试。")
+        self._record("review", "sufficient", route=plan.route,
+                     source_ids=[source["source_id"] for source in supported], detail="证据审查通过")
+        return self._outcome(plan.route, sources=supported)

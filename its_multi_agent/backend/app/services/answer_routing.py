@@ -1,4 +1,4 @@
-"""Source policy shared by chat preparation and offline evaluation."""
+"""聊天准备流程与离线评测共用的来源选择策略。"""
 
 import re
 from typing import Literal
@@ -61,7 +61,7 @@ def combined_service_request(question: str) -> bool:
 
 
 def identifiers(text: str) -> set[str]:
-    """Protect explicit model/error/version tokens, not all answer quantities."""
+    """保护明确的型号、错误码和版本标识，不将所有数值都视为标识。"""
     tokens = re.findall(r"(?<![A-Za-z0-9])[A-Za-z0-9]+(?:[-_./][A-Za-z0-9]+)*(?![A-Za-z0-9])", text)
     return {token.casefold() for token in tokens
             if any(c.isalpha() for c in token) and any(c.isdigit() for c in token)
@@ -69,7 +69,7 @@ def identifiers(text: str) -> set[str]:
 
 
 def protected_conditions(text: str) -> set[str]:
-    # Exclude search-control phrases; preserve factual quantities and operators.
+    # 排除控制搜索行为的短语，保留事实数值和运算符。
     text = _NO_WEB.sub("", text)
     text = re.sub(r"没有(?:结果)?就|查不到(?:时|就)?", "", text)
     tokens = re.findall(
@@ -123,7 +123,7 @@ def route_by_rules(question: str, *, has_attachments: bool = False,
 
 def validate_plan(question: str, proposal: RoutePlan, *, has_attachments: bool = False,
                   previous_question: str = "", memory_context: str = "") -> RoutePlan:
-    """A model may resolve intent but cannot override explicit source boundaries."""
+    """允许模型判断意图，但不得覆盖明确的来源边界。"""
     fixed = route_by_rules(question, has_attachments=has_attachments, previous_question=previous_question)
     if fixed is not None:
         return fixed

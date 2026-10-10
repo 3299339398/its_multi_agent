@@ -1,9 +1,10 @@
-"""Check indexed content before committing; never print credential values.
+"""提交前检查已暂存内容，且不输出凭据值。
 
-Run from anywhere: python its_multi_agent/scripts/check_secrets.py
-This checks common token formats and exact local .env secrets, not all possible secrets.
+可在任意目录运行：python its_multi_agent/scripts/check_secrets.py
+该脚本检查常见令牌格式及本地 .env 中的具体密钥，无法覆盖所有密钥形式。
 """
 import re
+import argparse
 import subprocess
 from pathlib import Path
 
@@ -37,7 +38,19 @@ def indexed_blobs():
             process.stdout.close()
 
 
+def worktree_blobs():
+    for raw_path in git("ls-files", "--cached", "--others", "--exclude-standard", "-z").split(b"\0"):
+        if not raw_path:
+            continue
+        path = ROOT / raw_path.decode("utf-8")
+        if path.is_file():
+            yield b"worktree\t" + raw_path, path.read_bytes()
+
+
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--worktree", action="store_true", help="检查当前已跟踪及未忽略的新增文件")
+    args = parser.parse_args()
     local_secrets = set()
     for path in (ROOT / ".env", ROOT / "its_multi_agent/.env",
                  ROOT / "its_multi_agent/backend/app/.env",
@@ -53,7 +66,7 @@ def main():
                 local_secrets.add(value.encode())
     failures = 0
     files = 0
-    for entry, data in indexed_blobs():
+    for entry, data in (worktree_blobs() if args.worktree else indexed_blobs()):
         meta, raw_path = entry.split(b"\t", 1)
         path = raw_path.decode("utf-8")
         filename = Path(path).name
@@ -65,7 +78,8 @@ def main():
         if TOKEN.search(data) or any(secret in data for secret in local_secrets):
             print(f"BLOCKED possible credential: {path} (value hidden)")
             failures += 1
-    print(f"Checked {files} indexed files; {failures} finding(s). History is not checked by this script.")
+    scope = "worktree" if args.worktree else "indexed"
+    print(f"Checked {files} {scope} files; {failures} finding(s). History is not checked by this script.")
     return 1 if failures else 0
 
 

@@ -1,3 +1,4 @@
+from its_multi_agent.backend.app.tests.test_stream_retry_state import FailingModel
 import json
 import unittest
 from types import SimpleNamespace
@@ -74,6 +75,8 @@ class NavigationContextTest(unittest.TestCase):
 class NavigationChatTest(unittest.IsolatedAsyncioTestCase):
     async def run_chat(self, query, history, plugins=None):
         target = "its_multi_agent.backend.app.services.agent_service."
+        if plugins is None:
+            plugins = ["map"]
         archived = [*history, message("user", query)]
         result = SimpleNamespace(final_output="从郑州到淄博，可以比较驾车和公共交通。", cancel=lambda: None)
 
@@ -87,15 +90,15 @@ class NavigationChatTest(unittest.IsolatedAsyncioTestCase):
             patch(target + "session_service.prepare_history", return_value=archived),
             patch(target + "session_service.save_history") as save,
             patch(target + "attachment_service.prepare_history", side_effect=lambda _u, h, **kw: list(h)),
-            patch(target + "resolve_profile", return_value=SimpleNamespace(supports_tools=True)),
-            patch(target + "model_for", return_value=object()),
+            patch(target + "resolve_profile", return_value=SimpleNamespace(supports_tools=True, model_name="offline-test")),
+            patch(target + "model_for", return_value=FailingModel()),
             patch(target + "build_orchestrator_agent", return_value=object()) as build,
             patch(target + "Runner.run_streamed", return_value=result) as generate,
             patch(target + "process_stream_response", stream),
             patch(target + "asyncio.create_task", side_effect=lambda coro: coro.close()),
         ):
             packets = [json.loads(packet.removeprefix("data: ")) async for packet in MultiAgentService.process_task(
-                ChatMessageRequest(query=query, context=UserContext(session_id="s"), enabled_plugins=plugins),
+                ChatMessageRequest(query=query, context=UserContext(session_id="s"), enabled_plugins=plugins, confirmed_plugins=["map"] if "map" in plugins else []),
                 user_id="alice", flag=False,
             )]
         return packets, save, build, generate

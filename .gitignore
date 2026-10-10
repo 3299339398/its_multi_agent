@@ -36,3 +36,8 @@ artifacts/
 # Node
 node_modules/
 dist/
+
+# Personal resume exports and temporary authoring files
+/.resume_render/
+/output/
+/tmp/

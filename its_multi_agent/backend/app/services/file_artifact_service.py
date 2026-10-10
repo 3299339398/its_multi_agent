@@ -1,4 +1,4 @@
-"""User-scoped, bounded files produced by Agent workflows."""
+"""管理 Agent 工作流生成的文件，按用户隔离并限制文件范围。"""
 import json
 import re
 import time
@@ -15,8 +15,15 @@ class FileArtifactError(ValueError):
 class FileArtifactService:
     MAX_BYTES = 2_000_000
     TTL_SECONDS = 7 * 24 * 3600
+    # 这些是可直接作为文本产物保存的格式。HTML 允许生成静态网页，
+    # 但仍然通过鉴权接口以附件方式下载，不把用户内容当作应用页面渲染。
     ALLOWED = {
-        ".txt": "text/plain", ".md": "text/markdown", ".json": "application/json", ".csv": "text/csv",
+        ".txt": "text/plain",
+        ".md": "text/markdown",
+        ".json": "application/json",
+        ".csv": "text/csv",
+        ".html": "text/html",
+        ".htm": "text/html",
     }
 
     def __init__(self, base: str | None = None):
@@ -32,7 +39,7 @@ class FileArtifactService:
             raise FileArtifactError("文件名不能包含路径")
         suffix = Path(safe_name).suffix.lower()
         if not safe_name or safe_name in {".", ".."} or suffix not in self.ALLOWED:
-            raise FileArtifactError("仅支持输出 txt、md、json、csv 文件")
+            raise FileArtifactError("仅支持输出 txt、md、json、csv、html 文件")
         if mime_type != self.ALLOWED[suffix]:
             raise FileArtifactError("文件扩展名与 MIME 类型不匹配")
         payload = str(content).encode("utf-8")

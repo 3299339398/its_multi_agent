@@ -12,7 +12,7 @@ SEPARATORS = ["\n##", "\n**", "\n\n", "\n", " ", ""]
 
 
 class ParentChildSplitter:
-    """Create small searchable children that retain their larger parent context."""
+    """生成用于检索的子块，并保留对应父块的完整上下文。"""
 
     def __init__(self):
         self.parent_splitter = RecursiveCharacterTextSplitter(
@@ -47,7 +47,9 @@ class ParentChildSplitter:
                 if section_path and f"章节路径:{section_path}" not in source_context
                 else source_context
             )
-            parents = self._split_if_needed(document, self.parent_splitter, settings.PARENT_CHUNK_SIZE)
+            parents = self._split_if_needed(
+                document, self.parent_splitter, settings.PARENT_CHUNK_SIZE
+            )
             for parent_index, parent in enumerate(parents):
                 parent_text = parent.page_content.strip()
                 if not parent_text:
@@ -60,29 +62,41 @@ class ParentChildSplitter:
                     parent_index=parent_index,
                     metadata=parent.metadata,
                 )
-                child_documents = self._split_if_needed(parent, self.child_splitter, settings.CHILD_CHUNK_SIZE)
+                child_documents = self._split_if_needed(
+                    parent, self.child_splitter, settings.CHILD_CHUNK_SIZE
+                )
                 for child_index, child in enumerate(child_documents):
                     child_text = child.page_content.strip()
                     if not child_text:
                         continue
                     metadata = dict(child.metadata)
-                    metadata.update({
-                        "chunk_type": "child",
-                        "parent_id": parent_id,
-                        "parent_index": parent_index,
-                        "child_index": child_index,
-                        "parent_content": parent_content,
-                    })
-                    children.append(Document(
-                        page_content=f"{indexed_context}\n{child_text}",
-                        metadata=metadata,
-                    ))
+                    metadata.update(
+                        {
+                            "chunk_type": "child",
+                            "parent_id": parent_id,
+                            "parent_index": parent_index,
+                            "child_index": child_index,
+                            "parent_content": parent_content,
+                        }
+                    )
+                    children.append(
+                        Document(
+                            page_content=f"{indexed_context}\n{child_text}",
+                            metadata=metadata,
+                        )
+                    )
         return children
 
     @staticmethod
-    def _split_if_needed(document: Document, splitter, threshold: int) -> List[Document]:
+    def _split_if_needed(
+        document: Document, splitter, threshold: int
+    ) -> List[Document]:
         if len(document.page_content) <= threshold:
-            return [Document(page_content=document.page_content, metadata=dict(document.metadata))]
+            return [
+                Document(
+                    page_content=document.page_content, metadata=dict(document.metadata)
+                )
+            ]
         return splitter.split_documents([document])
 
     @staticmethod

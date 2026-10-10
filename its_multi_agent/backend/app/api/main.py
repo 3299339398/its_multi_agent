@@ -67,7 +67,7 @@ def create_fast_api() -> FastAPI:
 
     @app.get("/readyz", tags=["system"])
     async def readyz():
-        """Readiness check for dependencies required by the deployed stack."""
+        """检查已部署服务所需依赖是否就绪。"""
         checks = {}
         try:
             checks["model"] = bool(list_profiles())

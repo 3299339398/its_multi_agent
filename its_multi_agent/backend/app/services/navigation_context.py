@@ -1,8 +1,7 @@
-"""Recover pending navigation slots from the session's persisted recent messages.
+"""从会话持久化的近期消息中恢复待补充的导航槽位。
 
-No process-global state: different users/sessions and server restarts cannot
-share a pending route. Unrecognized conversation turns end this narrow resolver;
-the normal planner still receives the original conversation for other tasks.
+不使用进程级全局状态，避免不同用户、不同会话或服务重启前后的请求共享待处理路线。
+遇到无法识别的对话轮次时结束此专用解析流程，其他任务仍由常规规划器接收原始对话。
 """
 
 import re
@@ -66,8 +65,7 @@ def resolve_navigation_context(question: str, history: list[dict]) -> Navigation
             continue
         destination = _DESTINATION.search(text)
         origin = _ORIGIN.search(text)
-        # Only handle pure navigation; combined research/service tasks belong to
-        # the existing planner, not this slot reducer.
+        # 此处仅处理纯导航请求；混合检索或服务任务交给现有规划器处理。
         if _NAVIGATION.search(text) and destination and not re.search(r"知识库|附件|内部|制度|服务站|维修|故障", text):
             state = NavigationContext(request=text, destination=destination[1])
             if origin and origin[1] not in _UNKNOWN:
@@ -93,8 +91,7 @@ def resolve_navigation_context(question: str, history: list[dict]) -> Navigation
                     state.destination = explicit_destination[1]
                 elif (re.fullmatch(_PLACE, text) and not _NOT_PLACE.search(text)
                       and text not in _UNKNOWN and text not in _ANY_MODE):
-                    # A short answer fills an unknown slot, never replaces an
-                    # already known destination just because the assistant erred.
+                    # 简短回答只填充未知槽位，不因助手判断错误而覆盖已知目的地。
                     if not state.origin and re.search(r"出发|起点|哪里|哪儿|城市|位置", last_assistant):
                         state.origin = text
                     elif not state.destination and re.search(r"目的地|终点|到哪|去哪", last_assistant):

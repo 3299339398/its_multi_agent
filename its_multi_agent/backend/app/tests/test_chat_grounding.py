@@ -1,3 +1,4 @@
+from its_multi_agent.backend.app.tests.test_stream_retry_state import FailingModel
 import json
 import unittest
 from types import SimpleNamespace
@@ -25,8 +26,8 @@ class ChatGroundingTest(unittest.IsolatedAsyncioTestCase):
             patch(target + "memory_service.retrieve", AsyncMock(return_value="")),
             patch(target + "session_service.prepare_history", return_value=history),
             patch(target + "session_service.save_history") as save,
-            patch(target + "resolve_profile", return_value=SimpleNamespace(supports_tools=True)),
-            patch(target + "model_for", return_value=object()),
+            patch(target + "resolve_profile", return_value=SimpleNamespace(supports_tools=True, model_name="offline-test")),
+            patch(target + "model_for", return_value=FailingModel()),
             patch(target + "GroundingWorkflow", return_value=workflow, create=True),
             patch(target + "build_orchestrator_agent", return_value=agent) as build,
             patch(target + "Runner.run_streamed", return_value=result) as generate,

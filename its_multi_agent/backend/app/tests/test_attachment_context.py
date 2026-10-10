@@ -1,3 +1,4 @@
+from its_multi_agent.backend.app.tests.test_stream_retry_state import FailingModel
 import io
 import json
 import tempfile
@@ -117,8 +118,8 @@ class AttachmentContextTest(unittest.IsolatedAsyncioTestCase):
         with (
             patch(target + "attachment_service", self.attachments),
             patch(target + "memory_service.extract_and_store", AsyncMock()),
-            patch(target + "resolve_profile", return_value=SimpleNamespace(supports_vision=False, supports_tools=False)),
-            patch(target + "model_for", return_value=object()),
+            patch(target + "resolve_profile", return_value=SimpleNamespace(supports_vision=False, supports_tools=False, model_name="offline-test")),
+            patch(target + "model_for", return_value=FailingModel()),
             patch(target + "build_orchestrator_agent", return_value=object()),
             patch(target + "session_service.prepare_history") as archive,
         ):

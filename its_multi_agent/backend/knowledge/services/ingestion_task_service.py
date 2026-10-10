@@ -8,12 +8,13 @@ from uuid import uuid4
 
 from its_multi_agent.backend.knowledge.config.settings import settings
 from its_multi_agent.backend.knowledge.repositories.document_registry import (
-    DocumentBusyError, document_registry,
+    DocumentBusyError,
+    document_registry,
 )
 
 
 class IngestionTaskService:
-    """Durable task state with a bounded in-process worker pool."""
+    """通过有界进程内工作池处理任务，并持久化任务状态。"""
 
     def __init__(self, processor, db_path: Optional[str] = None) -> None:
         self._processor = processor
@@ -22,7 +23,9 @@ class IngestionTaskService:
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         self._upload_dir = Path(settings.INGESTION_UPLOAD_FOLDER_PATH)
         self._upload_dir.mkdir(parents=True, exist_ok=True)
-        self._executor = ThreadPoolExecutor(max_workers=max(1, settings.INGESTION_WORKERS))
+        self._executor = ThreadPoolExecutor(
+            max_workers=max(1, settings.INGESTION_WORKERS)
+        )
         self._initialize()
         self._recover_pending_tasks()
 
@@ -38,7 +41,9 @@ class IngestionTaskService:
     ) -> Dict[str, Any]:
         task_id = uuid4().hex
         now = int(time.time())
-        with self._registry.document_lock(document_hash, timeout=30), self._connect() as connection:
+        with self._registry.document_lock(
+            document_hash, timeout=30
+        ), self._connect() as connection:
             document = self._registry.get_document(document_hash)
             if not document or document["status"] != "processing":
                 raise ValueError("Document is not claimed for ingestion")
@@ -51,8 +56,16 @@ class IngestionTaskService:
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', 0, '任务已排队', '', 0, 0, ?, ?, ?)
                 """,
                 (
-                    task_id, document_hash, file_path, file_name,
-                    knowledge_space, domain, uploaded_by, now, now, document["generation"],
+                    task_id,
+                    document_hash,
+                    file_path,
+                    file_name,
+                    knowledge_space,
+                    domain,
+                    uploaded_by,
+                    now,
+                    now,
+                    document["generation"],
                 ),
             )
         self._submit(task_id)
@@ -65,10 +78,21 @@ class IngestionTaskService:
             ).fetchone()
         return dict(row) if row else None
 
+    def active_task_for_document(self, document_hash):
+        with self._connect() as connection:
+            row = connection.execute(
+                """SELECT * FROM ingestion_tasks WHERE document_hash=?
+                   AND status IN ('queued','processing') ORDER BY created_at DESC LIMIT 1""",
+                (document_hash,),
+            ).fetchone()
+        return dict(row) if row else None
+
     def list_tasks(self, *, page: int = 1, page_size: int = 20) -> Dict[str, Any]:
         offset = (page - 1) * page_size
         with self._connect() as connection:
-            total = connection.execute("SELECT COUNT(*) FROM ingestion_tasks").fetchone()[0]
+            total = connection.execute(
+                "SELECT COUNT(*) FROM ingestion_tasks"
+            ).fetchone()[0]
             rows = connection.execute(
                 """
                 SELECT * FROM ingestion_tasks
@@ -77,7 +101,12 @@ class IngestionTaskService:
                 """,
                 (page_size, offset),
             ).fetchall()
-        return {"items": [dict(row) for row in rows], "total": int(total), "page": page, "page_size": page_size}
+        return {
+            "items": [dict(row) for row in rows],
+            "total": int(total),
+            "page": page,
+            "page_size": page_size,
+        }
 
     def retry_task(self, task_id: str) -> Optional[Dict[str, Any]]:
         task = self.get_task(task_id)
@@ -86,9 +115,12 @@ class IngestionTaskService:
         if not Path(task["file_path"]).exists():
             return None
         try:
-            with self._registry.document_lock(task["document_hash"]), self._connect_registry() as connection:
+            with self._registry.document_lock(
+                task["document_hash"]
+            ), self._connect_registry() as connection:
                 current = connection.execute(
-                    "SELECT status FROM ingestion_tasks WHERE task_id = ?", (task_id,),
+                    "SELECT status FROM ingestion_tasks WHERE task_id = ?",
+                    (task_id,),
                 ).fetchone()
                 if current["status"] != "failed":
                     return None
@@ -97,7 +129,11 @@ class IngestionTaskService:
                     UPDATE registry.documents SET status = 'processing', error_message = '', updated_at = ?
                     WHERE document_hash = ? AND generation = ? AND status = 'failed'
                     """,
-                    (int(time.time()), task["document_hash"], task["document_generation"]),
+                    (
+                        int(time.time()),
+                        task["document_hash"],
+                        task["document_generation"],
+                    ),
                 )
                 if updated.rowcount != 1:
                     return None
@@ -181,8 +217,14 @@ class IngestionTaskService:
                 UPDATE registry.documents SET status = ?, chunks_added = ?, error_message = ?, updated_at = ?
                 WHERE document_hash = ? AND generation = ? AND status = 'processing'
                 """,
-                ("complete" if status == "success" else "failed", chunks_added, error_message[:1000],
-                 now, task["document_hash"], task["document_generation"]),
+                (
+                    "complete" if status == "success" else "failed",
+                    chunks_added,
+                    error_message[:1000],
+                    now,
+                    task["document_hash"],
+                    task["document_generation"],
+                ),
             )
             connection.execute(
                 """
@@ -190,8 +232,14 @@ class IngestionTaskService:
                     error_message = ?, message = ?, updated_at = ?
                 WHERE task_id = ? AND status = 'processing'
                 """,
-                (status, chunks_added, error_message[:1000],
-                 "文档入库完成" if status == "success" else "文档入库失败", now, task["task_id"]),
+                (
+                    status,
+                    chunks_added,
+                    error_message[:1000],
+                    "文档入库完成" if status == "success" else "文档入库失败",
+                    now,
+                    task["task_id"],
+                ),
             )
 
     def delete_document(self, document_hash: str, actor: str) -> Dict[str, Any]:
@@ -203,12 +251,17 @@ class IngestionTaskService:
                 raise DocumentBusyError("Document is being processed")
             try:
                 self._processor.vector_store.delete_document(
-                    document_hash, document["knowledge_space"], document["domain"],
+                    document_hash,
+                    document["knowledge_space"],
+                    document["domain"],
                 )
-                lexical_chunks = self._processor.lexical_index.delete_document(document_hash)
+                lexical_chunks = self._processor.lexical_index.delete_document(
+                    document_hash
+                )
                 self._registry.mark_deleted(document_hash, actor)
                 return {
-                    "status": "deleted", "document_hash": document_hash,
+                    "status": "deleted",
+                    "document_hash": document_hash,
                     "lexical_chunks_deleted": lexical_chunks,
                 }
             except Exception as error:
@@ -234,7 +287,16 @@ class IngestionTaskService:
                     updated_at = ?
                 WHERE task_id = ?
                 """,
-                (status, progress, message, error_message[:1000], chunks_added, chunks_added, int(time.time()), task_id),
+                (
+                    status,
+                    progress,
+                    message,
+                    error_message[:1000],
+                    chunks_added,
+                    chunks_added,
+                    int(time.time()),
+                    task_id,
+                ),
             )
 
     def _recover_pending_tasks(self) -> None:
@@ -249,13 +311,24 @@ class IngestionTaskService:
                     if current["status"] not in {"queued", "processing"}:
                         continue
                     document = self._registry.get_document(row["document_hash"])
-                    if (not document or document["status"] != "processing"
-                            or document["generation"] != row["document_generation"]):
-                        self._update(row["task_id"], "failed", 100, "文档状态已变更", error_message="文档状态已变更")
+                    if (
+                        not document
+                        or document["status"] != "processing"
+                        or document["generation"] != row["document_generation"]
+                    ):
+                        self._update(
+                            row["task_id"],
+                            "failed",
+                            100,
+                            "文档状态已变更",
+                            error_message="文档状态已变更",
+                        )
                         continue
                     if not Path(row["file_path"]).exists():
                         self._update(row["task_id"], "processing", 0, "任务文件不存在")
-                        self._finish_task(dict(row), "failed", error_message="任务文件不存在")
+                        self._finish_task(
+                            dict(row), "failed", error_message="任务文件不存在"
+                        )
                         continue
                     self._update(row["task_id"], "queued", 0, "服务恢复后重新排队")
                 self._submit(row["task_id"])
@@ -264,10 +337,11 @@ class IngestionTaskService:
 
     @contextmanager
     def _connect_registry(self) -> Iterator[sqlite3.Connection]:
-        # Commit task and document state together while the caller holds the
-        # document lock. This also makes retry crash-safe between the two DBs.
+        # 调用方持有文档锁时一并提交任务和文档状态，确保跨两个数据库的重试可从崩溃中恢复。
         with self._connect() as connection:
-            connection.execute("ATTACH DATABASE ? AS registry", (str(self._registry._db_path),))
+            connection.execute(
+                "ATTACH DATABASE ? AS registry", (str(self._registry._db_path),)
+            )
             connection.execute("BEGIN IMMEDIATE")
             yield connection
 
@@ -307,10 +381,17 @@ class IngestionTaskService:
                 )
                 """
             )
-            connection.execute("CREATE INDEX IF NOT EXISTS idx_ingestion_tasks_status ON ingestion_tasks(status)")
-            columns = {row["name"] for row in connection.execute("PRAGMA table_info(ingestion_tasks)")}
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_ingestion_tasks_status ON ingestion_tasks(status)"
+            )
+            columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(ingestion_tasks)")
+            }
             if "document_generation" not in columns:
-                connection.execute("ALTER TABLE ingestion_tasks ADD COLUMN document_generation TEXT NOT NULL DEFAULT ''")
+                connection.execute(
+                    "ALTER TABLE ingestion_tasks ADD COLUMN document_generation TEXT NOT NULL DEFAULT ''"
+                )
 
 
 def create_ingestion_task_service(processor) -> IngestionTaskService:

@@ -35,6 +35,7 @@ from its_multi_agent.backend.app.repositories.model_profile_repository import Du
 from its_multi_agent.backend.app.schemas.model_profile import ModelProfileCreate
 from its_multi_agent.backend.app.schemas.file_artifact import FileArtifactCreateRequest
 from its_multi_agent.backend.app.services.file_artifact_service import file_artifact_service, FileArtifactError
+from its_multi_agent.backend.app.services.file_preview_service import issue_preview_ticket, verify_preview_ticket
 
 
 router = APIRouter()
@@ -78,7 +79,14 @@ def download_file_artifact(artifact_id: str, user: Dict[str, str] = Depends(get_
         item = file_artifact_service.get(user["user_id"], artifact_id)
     except FileArtifactError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
-    return FileResponse(item["path"], media_type=item["mime_type"], filename=item["filename"])
+    return FileResponse(
+        item["path"], media_type=item["mime_type"], filename=item["filename"],
+        content_disposition_type="attachment",
+        headers={
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "sandbox",
+        },
+    )
 
 
 @router.delete("/api/files/{artifact_id}", summary="Delete a generated file")
@@ -88,6 +96,34 @@ def delete_file_artifact(artifact_id: str, user: Dict[str, str] = Depends(get_cu
     except FileArtifactError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
     return {"deleted": True, "id": artifact_id}
+
+
+@router.post("/api/files/{artifact_id}/preview-ticket")
+def create_preview_ticket(artifact_id: str, user: Dict[str, str] = Depends(get_current_user)):
+    try:
+        item = file_artifact_service.get(user["user_id"], artifact_id)
+        if item["mime_type"] != "text/html":
+            raise FileArtifactError("仅支持 HTML 预览")
+        ticket = issue_preview_ticket(user["user_id"], artifact_id)
+    except (FileArtifactError, ValueError) as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    return JSONResponse({"preview_url": f"/api/file-previews/{ticket}"}, headers={"Cache-Control": "no-store"})
+
+
+@router.get("/api/file-previews/{ticket}")
+def preview_file_artifact(ticket: str):
+    try:
+        user_id, artifact_id = verify_preview_ticket(ticket)
+        item = file_artifact_service.get(user_id, artifact_id)
+        if item["mime_type"] != "text/html":
+            raise FileArtifactError("仅支持 HTML 预览")
+    except (FileArtifactError, ValueError) as error:
+        raise HTTPException(status_code=404, detail="预览不存在或已过期") from error
+    return FileResponse(item["path"], media_type="text/html", headers={
+        "Cache-Control": "no-store", "Referrer-Policy": "no-referrer",
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'",
+    })
 
 
 @router.post("/api/attachments", summary="Upload a chat attachment")
@@ -156,7 +192,7 @@ def current_user(user: Dict[str, str] = Depends(get_current_user)):
 
 @router.get("/api/model-profiles", summary="Available model profiles")
 def available_model_profiles(user: Dict[str, str] = Depends(get_current_user)):
-    """Expose model metadata only; credentials remain server-side."""
+    """仅公开模型元数据，凭据始终保留在服务端。"""
     profiles = []
     for profile in list_profiles():
         data = profile.model_dump(exclude={"api_key", "base_url"})
@@ -255,8 +291,8 @@ async def query(
     run_id = await task_manager.start(request_context, user["user_id"])
 
     async def stream():
-        # A small metadata event lets reconnecting clients associate the stream
-        # with its run. Existing clients safely ignore this event.
+        # 通过轻量元数据事件，让重连客户端可将事件流关联到对应任务。
+        # 现有客户端可安全忽略此事件。
         yield "data: " + json.dumps({"task": {"run_id": run_id, "session_id": request_context.context.session_id}}, ensure_ascii=False) + "\n\n"
         async for packet in task_manager.subscribe(run_id, user["user_id"]):
             yield packet
@@ -294,6 +330,17 @@ async def cancel_task(run_id: str, user: Dict[str, str] = Depends(get_current_us
     if not await task_manager.cancel(run_id, user["user_id"]):
         raise HTTPException(status_code=404, detail="任务不存在")
     return {"run_id": run_id, "status": "cancelled"}
+
+
+@router.post("/api/tasks/{run_id}/resume", summary="Resume a failed task from its checkpoint")
+async def resume_task(run_id: str, user: Dict[str, str] = Depends(get_current_user)):
+    """显式恢复已失败任务；不在服务启动时自动重放有副作用步骤。"""
+    try:
+        return await task_manager.resume(run_id, user["user_id"])
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
 
 
 @router.get("/api/user_sessions", summary="Current user's chat archives")

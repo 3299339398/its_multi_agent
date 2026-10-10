@@ -53,7 +53,7 @@ class FinishMessageBody(MessageBody):
 
 
 class SourceMessageBody(MessageBody):
-    """Reviewed evidence snapshots associated with the current answer."""
+    """与当前回答关联且已经审查的证据快照。"""
     contentType: Literal['sagegpt/sources'] = 'sagegpt/sources'
     sources: List[dict] = Field(default_factory=list, max_length=8)
 
@@ -63,6 +63,17 @@ class PlanMessageBody(MessageBody):
     run_id: str
     status: str
     steps: List[dict] = Field(default_factory=list, max_length=6)
+
+
+class GroundingTraceMessageBody(MessageBody):
+    """检索和证据审查过程的可观察快照。"""
+    contentType: Literal['sagegpt/grounding-trace'] = 'sagegpt/grounding-trace'
+    phase: str
+    status: str
+    route: str = ''
+    origin: Optional[str] = None
+    source_ids: List[str] = Field(default_factory=list, max_length=8)
+    detail: str = Field(default='', max_length=500)
 
 
 # --- 顶层数据包定义 ---
@@ -82,6 +93,9 @@ class StreamPacket(BaseModel):
     这是后端 yield 给前端的最小数据单元。
     """
     id: str
-    content: Union[TextMessageBody, FinishMessageBody, SourceMessageBody, PlanMessageBody]
+    content: Union[
+        TextMessageBody, FinishMessageBody, SourceMessageBody,
+        PlanMessageBody, GroundingTraceMessageBody,
+    ]
     status: StreamStatus
     metadata: PacketMeta

@@ -39,11 +39,16 @@ jobs:
       - name: Run application tests
         run: python -X utf8 -m unittest discover -s its_multi_agent/backend/app/tests
       - name: Run Harness contracts
-        run: python -X utf8 -m unittest its_multi_agent.harness.test_harness
+        run: python -X utf8 -m unittest discover -s its_multi_agent/harness -t .
 
   knowledge:
     runs-on: ubuntu-latest
     env:
+      API_KEY: offline-test-placeholder
+      BASE_URL: https://example.invalid/v1
+      MODEL: offline-model
+      EMBEDDING_MODEL: offline-embedding
+      KNOWLEDGE_BASE_URL: http://127.0.0.1:8001
       DOCUMENT_REGISTRY_PATH: ${{ runner.temp }}/documents.db
       LEXICAL_INDEX_PATH: ${{ runner.temp }}/lexical.db
       INGESTION_TASK_DB_PATH: ${{ runner.temp }}/ingestion-tasks.db

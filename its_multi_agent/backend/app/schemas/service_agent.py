@@ -1,4 +1,4 @@
-"""Contracts exchanged between the orchestrator and the service specialist."""
+"""编排 Agent 与服务专家 Agent 之间交换的数据契约。"""
 
 from typing import Any, Literal
 
@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ServiceTask(BaseModel):
-    """A bounded task handed from the main agent to the service specialist."""
+    """主 Agent 交给服务专家 Agent 的受限任务。"""
 
     model_config = ConfigDict(extra="ignore")
 
@@ -21,7 +21,7 @@ class ServiceTask(BaseModel):
 
 
 class ServiceAgentResult(BaseModel):
-    """Machine-readable result returned by the service specialist."""
+    """服务专家 Agent 返回的机器可读结果。"""
 
     model_config = ConfigDict(extra="ignore")
 

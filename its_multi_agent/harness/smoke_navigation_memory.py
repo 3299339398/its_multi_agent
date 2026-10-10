@@ -1,4 +1,4 @@
-"""Opt-in real-model/SSE check, with isolated history and a stub map specialist."""
+"""按需运行真实模型与 SSE 检查，使用隔离历史和地图专家桩实现。"""
 import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch

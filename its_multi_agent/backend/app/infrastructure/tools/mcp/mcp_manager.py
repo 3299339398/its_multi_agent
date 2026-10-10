@@ -4,7 +4,7 @@ from its_multi_agent.backend.app.infrastructure.tools.mcp.mcp_servers import (
     baidu_mcp_client,
 )
 
-# Connection status only; do not place provider errors or credentials in prompts.
+# 仅记录连接状态，不将服务商错误或凭据写入 Prompt。
 connection_status = {"search_web": "unknown", "query_service_station_and_navigate": "unknown"}
 
 async def mcp_connect():

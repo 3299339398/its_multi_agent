@@ -1,6 +1,14 @@
 <template>
   <div class="answer-message">
     <div class="markdown-body" v-html="html" @click="openCitation"></div>
+    <div v-if="artifactLinks.length" class="artifact-actions" aria-label="生成的文件">
+      <div v-for="artifact in artifactLinks" :key="artifact.id" class="artifact-action-row">
+        <FileText :size="16" aria-hidden="true" /><span>{{ artifact.preview ? 'HTML 网页' : '生成文件' }}</span>
+        <button v-if="artifact.preview" type="button" @click="$emit('preview-file', artifact.id)"><Eye :size="15" />预览</button>
+        <button type="button" :disabled="downloadingId === artifact.id" @click="downloadFile(artifact.id)"><Download :size="15" />{{ downloadingId === artifact.id ? '下载中' : '下载' }}</button>
+      </div>
+      <p v-if="artifactError" class="artifact-error" role="alert">{{ artifactError }}</p>
+    </div>
     <div v-if="evidence.length" class="answer-sources" aria-label="参考来源">
       <span class="sources-label">来源</span>
       <button v-for="(source, index) in evidence" :key="source.source_id" type="button"
@@ -50,10 +58,34 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { ExternalLink, FileText, X } from '@lucide/vue'
+import { Download, ExternalLink, Eye, FileText, X } from '@lucide/vue'
 import { normalizeSources, renderCitedMarkdown } from '../utils/citations'
+import { authFetch, readErrorMessage, readJsonResponse } from '../api/auth'
+import { downloadArtifact } from '../utils/fileArtifacts'
 
 const props = defineProps({ text: { type: String, default: '' }, sources: { type: Array, default: () => [] } })
+const emit = defineEmits(['preview-file'])
+const downloadingId = ref('')
+const artifactError = ref('')
+const artifactLinks = computed(() => {
+  const items = new Map()
+  for (const match of props.text.matchAll(/\/api\/files\/([0-9a-f]{32})\/download|#file-preview=([0-9a-f]{32})/g)) {
+    const id = match[1] || match[2]
+    items.set(id, { id, preview: Boolean(match[2] || items.get(id)?.preview) })
+  }
+  return [...items.values()].slice(0, 8)
+})
+const downloadFile = async id => {
+  if (downloadingId.value) return
+  downloadingId.value = id
+  artifactError.value = ''
+  try {
+    const response = await authFetch(`/api/files/${encodeURIComponent(id)}`)
+    if (!response.ok) throw new Error(await readErrorMessage(response, '读取文件失败'))
+    await downloadArtifact(await readJsonResponse(response))
+  } catch (failure) { artifactError.value = failure.message || '下载失败' }
+  finally { downloadingId.value = '' }
+}
 const evidence = computed(() => normalizeSources(props.sources))
 const html = computed(() => renderCitedMarkdown(props.text, evidence.value))
 const dialog = ref(null)
@@ -70,6 +102,16 @@ const openSource = async id => {
   if (selected.value && dialog.value && !dialog.value.open) dialog.value.showModal()
 }
 const openCitation = event => {
+  const link = event.target.closest('a')
+  const href = link?.getAttribute('href') || ''
+  const preview = /^#file-preview=([0-9a-f]{32})$/.exec(href)
+  const download = /^\/api\/files\/([0-9a-f]{32})\/download$/.exec(href)
+  if (preview || download) {
+    event.preventDefault()
+    if (preview) emit('preview-file', preview[1])
+    else void downloadFile(download[1])
+    return
+  }
   const control = event.target.closest('button[data-source-id]')
   if (control) void openSource(control.dataset.sourceId)
 }
@@ -92,6 +134,13 @@ onBeforeUnmount(closeSource)
 </script>
 
 <style scoped>
+.artifact-actions { margin-top: 14px; padding: 12px 14px; border: 1px solid #d5dfdb; border-radius: 8px; background: #f7faf9; }
+.artifact-action-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; color: #35665b; font-size: 13px; }
+.artifact-action-row + .artifact-action-row { margin-top: 10px; }
+.artifact-action-row span { margin-right: auto; }
+.artifact-action-row button { display: inline-flex; align-items: center; gap: 5px; padding: 6px 10px; border: 1px solid #d5dfdb; border-radius: 6px; background: #fff; color: #35665b; font-size: 12px; cursor: pointer; }
+.artifact-action-row button:disabled { opacity: .5; cursor: wait; }
+.artifact-error { color: #a33d37; font-size: 12px; }
 .answer-message { min-width: 0; }
 .answer-sources { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 12px; padding-top: 10px; border-top: 1px solid #e4e7eb; }
 .sources-label { color: #65717b; font-size: 12px; }

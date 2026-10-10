@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     3. 默认值
     """
 
+    FILE_ARTIFACT_FOLDER: Optional[str] = None
+
     # ==================== AI 服务配置 ====================
 
     # 硅基流动 API
@@ -67,6 +69,24 @@ class Settings(BaseSettings):
     MODEL_PROFILES_JSON: str = Field(
         default="",
         description="Server-managed JSON model profiles; API keys stay backend-only",
+    )
+    MODEL_CONTEXT_WINDOW_TOKENS_DEFAULT: int = Field(default=32768, ge=1024, le=2000000)
+    MODEL_MAX_OUTPUT_TOKENS_DEFAULT: int = Field(default=4096, ge=256, le=1000000)
+    CONTEXT_TOKEN_SAFETY_MARGIN: int = Field(default=1024, ge=0, le=100000)
+    CONTEXT_IMAGE_TOKEN_ESTIMATE: int = Field(default=2048, ge=256, le=100000)
+    AGENT_FORK_MODE_ENABLED: bool = Field(
+        default=True,
+        description="Use a shared fixed-prefix Agent template for parent and child branches",
+    )
+    AGENT_PARALLEL_FORK_ENABLED: bool = Field(
+        default=True,
+        description="Run independent read-only Fork branches concurrently",
+    )
+    AGENT_MAX_PARALLEL_BRANCHES: int = Field(
+        default=3,
+        ge=1,
+        le=6,
+        description="Maximum number of independent Fork branches in one plan wave",
     )
     MODEL_ALLOWED_BASE_URLS_JSON: str = Field(
         default="[]", description="Additional administrator-approved exact model base URLs, including local providers",
@@ -114,6 +134,17 @@ class Settings(BaseSettings):
     WORKSPACE_SQLITE_PATH: Optional[str] = None
     MODEL_PROFILE_SQLITE_PATH: Optional[str] = None
 
+    # ==================== 工程任务配置 ====================
+    CODE_WORKSPACE_ROOT: Optional[str] = Field(
+        default=None,
+        description="编码 Agent 允许读写的工程根目录；未配置时禁用工程修改能力",
+    )
+    CODE_CHECK_COMMANDS_JSON: str = Field(
+        default="{}",
+        description="管理员预设的代码检查命令，格式为名称到参数数组的 JSON 映射",
+    )
+    CODE_STEP_TIMEOUT_SECONDS: int = Field(default=180, ge=10, le=900)
+
     REDIS_URL: Optional[str] = Field(default=None, description="实时上下文缓存 Redis 地址")
     REDIS_CONTEXT_TTL: int = Field(default=86400, ge=60, le=604800)
 
@@ -127,12 +158,16 @@ class Settings(BaseSettings):
     MEMORY_EXTRACTION_MODEL: Optional[str] = Field(default=None)
     MEMORY_TTL_DAYS: int = Field(default=90, ge=1, le=3650)
     MEMORY_DEDUP_COSINE_THRESHOLD: float = Field(default=0.88, ge=-1.0, le=1.0)
+    MEMORY_RETRIEVAL_COSINE_THRESHOLD: float = Field(default=0.3, ge=-1.0, le=1.0)
 
     # ==================== Pydantic Settings 配置 ====================
 
     model_config = SettingsConfigDict(
         # 计算.env文件的绝对路径：config目录的父目录(app目录)下的.env
-        env_file=str(Path(__file__).parent.parent / ".env"),
+        env_file=(
+            str(Path(__file__).parent.parent / ".env"),
+            str(Path(__file__).parent.parent / ".env.coding"),
+        ),
         env_file_encoding="utf-8",          # .env文件编码
         case_sensitive=True,                 # 环境变量名大小写敏感
         extra="ignore",                      # 忽略额外的环境变量
@@ -156,6 +191,15 @@ class Settings(BaseSettings):
             raise ValueError("MODEL_ALLOWED_BASE_URLS_JSON must be a JSON list of URLs")
         for endpoint in allowed:
             normalize_model_base_url(endpoint)
+
+        code_commands = json.loads(self.CODE_CHECK_COMMANDS_JSON)
+        if not isinstance(code_commands, dict) or any(
+            not isinstance(name, str) or not name.strip()
+            or not isinstance(command, list) or not command
+            or any(not isinstance(part, str) or not part for part in command)
+            for name, command in code_commands.items()
+        ):
+            raise ValueError("CODE_CHECK_COMMANDS_JSON 必须是名称到非空参数数组的 JSON 对象")
 
         profiles = []
         if self.MODEL_PROFILES_JSON:

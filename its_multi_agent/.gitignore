@@ -14,7 +14,10 @@ backend/app/user_memories/
 backend/app/data/
 backend/app/runtime/
 backend/knowledge/chroma_kb/
+backend/knowledge/*.egg-info/
+backend/knowledge/.venv/
 backend/knowledge/data/tmp/
+backend/knowledge/data/ingestion_uploads/
 backend/knowledge/data/*.db
 backend/knowledge/.pytest_cache/
 backend/knowledge/volumes/

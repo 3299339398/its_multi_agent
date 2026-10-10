@@ -1,4 +1,4 @@
-"""Per-user chat attachment storage and content preparation."""
+"""按用户隔离存储聊天附件，并准备模型所需的附件内容。"""
 import base64
 import asyncio
 import hashlib
@@ -111,7 +111,7 @@ class AttachmentService:
         prepared: Dict[str, Dict[str, Any]] | None = None, include_images: bool = True,
         evidence_out: List[Dict[str, Any]] | None = None,
     ) -> List[Dict[str, Any]]:
-        # Prioritize the newest evidence and never send archive-only fields to the model SDK.
+        # 优先使用最新证据，且不向模型 SDK 发送仅供归档使用的字段。
         selected = []
         for message in reversed(history):
             for reference in message.get("attachments", []):
@@ -128,7 +128,7 @@ class AttachmentService:
                 else:
                     available[item] = self.prepare_messages(user_id, [item])[0]
             except (AttachmentError, OSError, ValueError):
-                # Lost or corrupt historical evidence must not poison future turns.
+                # 历史证据丢失或损坏时，不能影响后续对话。
                 continue
         prepared = {item: available[item] for item in selected if item in available}
         budget = MAX_CONTEXT_ATTACHMENT_CHARS
@@ -187,7 +187,7 @@ class AttachmentService:
                         text = Paragraph(element, doc).text.strip()
                         if text:
                             blocks.append(text)
-                        # python-docx omits w:t inside drawing/text boxes.
+                        # python-docx 会遗漏绘图和文本框内的 w:t 节点。
                         xml_text = "".join(node.text or "" for node in element.iter()
                                            if node.tag.endswith("}t")).strip()
                         if xml_text and xml_text != text:
@@ -197,7 +197,7 @@ class AttachmentService:
                             row_text = " | ".join(cell.text.strip() for cell in row.cells).strip()
                             if row_text:
                                 blocks.append(row_text)
-                # Headers/footers and text boxes are stored outside body.
+                # 页眉、页脚和文本框存储在正文之外。
                 for section in doc.sections:
                     for container in (section.header, section.first_page_header,
                                       section.even_page_header, section.footer,
@@ -226,8 +226,7 @@ class AttachmentService:
                             if result:
                                 ocr_blocks.append(f"图片 OCR：{result}")
                 blocks.extend(ocr_blocks)
-                # Preserve document order where possible while removing repeated
-                # header/XML/OCR fragments.
+                # 尽量保持文档顺序，同时移除重复的页眉、XML 和 OCR 片段。
                 return "\n".join(dict.fromkeys(item for item in blocks if item.strip()))
             except ImportError as error:
                 raise AttachmentError("服务器未安装 Word 文本提取组件") from error
@@ -248,7 +247,7 @@ class AttachmentService:
 
     @staticmethod
     def _ocr_bytes(data: bytes, name: str) -> str:
-        """OCR an embedded image through installed Tesseract, if available."""
+        """使用已安装的 Tesseract 对嵌入图片执行 OCR；不可用时返回空结果。"""
         command = os.getenv("TESSERACT_CMD", "tesseract")
         if command == "tesseract":
             candidates = [

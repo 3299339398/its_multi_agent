@@ -1,4 +1,4 @@
-"""Opt-in live model smoke check; stores no user history or credentials."""
+"""按需运行真实模型冒烟检查，不存储用户历史或凭据。"""
 import json
 from unittest.mock import AsyncMock, patch
 from fastapi import FastAPI

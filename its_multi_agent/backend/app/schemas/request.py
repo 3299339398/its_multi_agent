@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 
 class UserContext(BaseModel):
-    """Conversation-scoped data. User identity comes from authentication."""
+    """会话范围内的数据，用户身份由认证信息确定。"""
 
     session_id: Optional[str] = Field(
         default=None,
@@ -15,7 +15,7 @@ class UserContext(BaseModel):
 
 
 class GeoLocation(BaseModel):
-    """A user-approved device location attached to a single chat request."""
+    """用户授权并附加到单次聊天请求的设备位置。"""
 
     latitude: float = Field(ge=-90, le=90)
     longitude: float = Field(ge=-180, le=180)
@@ -31,6 +31,8 @@ class ChatMessageRequest(BaseModel):
     flag: bool = True
     model_profile_id: Optional[str] = Field(default=None, max_length=64)
     enabled_plugins: Optional[list[str]] = Field(default=None, max_length=16)
+    # 高风险插件必须由客户端在用户确认后回传；服务端会再次校验。
+    confirmed_plugins: list[str] = Field(default_factory=list, max_length=16)
     project_id: str = Field(default="default", min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
     work_mode: Literal["auto", "chat", "research", "plan"] = "auto"
     attachment_ids: list[str] = Field(default_factory=list, max_length=8)
@@ -44,6 +46,8 @@ class TemporaryModelRequest(BaseModel):
     api_key: str = Field(min_length=1, max_length=1024)
     provider: str = Field(default="openai-compatible", max_length=64)
     roles: list[Literal["chat", "reasoning", "vision"]] = Field(default_factory=lambda: ["chat"])
+    context_window_tokens: Optional[int] = Field(default=None, ge=1024, le=2000000)
+    max_output_tokens: Optional[int] = Field(default=None, ge=256, le=1000000)
 
 
 class LoginRequest(BaseModel):
@@ -52,7 +56,7 @@ class LoginRequest(BaseModel):
 
 
 class RegisterRequest(LoginRequest):
-    """Public client registration; the role is always assigned server-side."""
+    """公开客户端注册请求，用户角色始终由服务端分配。"""
 
 
 class WorkspaceCreateRequest(BaseModel):

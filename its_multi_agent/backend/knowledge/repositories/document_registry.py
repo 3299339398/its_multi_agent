@@ -10,11 +10,11 @@ from its_multi_agent.backend.knowledge.config.settings import settings
 
 
 class DocumentBusyError(ValueError):
-    """Another process is mutating this document's indexes."""
+    """其他进程正在修改该文档的索引。"""
 
 
 class DocumentRegistry:
-    """Tracks uploaded document hashes so ingestion is idempotent."""
+    """记录已上传文档的哈希，确保重复入库请求保持幂等。"""
 
     CLAIM_TTL_SECONDS = 3600
 
@@ -37,16 +37,27 @@ class DocumentRegistry:
         try:
             with self.document_lock(document_hash):
                 return self._claim(
-                    document_hash, file_name, content_hash=content_hash,
-                    knowledge_space=knowledge_space, domain=domain,
-                    file_size=file_size, uploaded_by=uploaded_by,
+                    document_hash,
+                    file_name,
+                    content_hash=content_hash,
+                    knowledge_space=knowledge_space,
+                    domain=domain,
+                    file_size=file_size,
+                    uploaded_by=uploaded_by,
                 )
         except DocumentBusyError:
             return False
 
     def _claim(
-        self, document_hash, file_name, *, content_hash, knowledge_space,
-        domain, file_size, uploaded_by,
+        self,
+        document_hash,
+        file_name,
+        *,
+        content_hash,
+        knowledge_space,
+        domain,
+        file_size,
+        uploaded_by,
     ) -> bool:
         now = int(time.time())
         with self._connect() as connection:
@@ -57,7 +68,11 @@ class DocumentRegistry:
             ).fetchone()
             if row and row["status"] == "complete":
                 return False
-            if row and row["status"] == "processing" and now - row["updated_at"] < self.CLAIM_TTL_SECONDS:
+            if (
+                row
+                and row["status"] == "processing"
+                and now - row["updated_at"] < self.CLAIM_TTL_SECONDS
+            ):
                 return False
 
             connection.execute(
@@ -85,8 +100,16 @@ class DocumentRegistry:
                     generation = excluded.generation
                 """,
                 (
-                    document_hash, content_hash, file_name, knowledge_space,
-                    domain, file_size, uploaded_by, now, now, uuid4().hex,
+                    document_hash,
+                    content_hash,
+                    file_name,
+                    knowledge_space,
+                    domain,
+                    file_size,
+                    uploaded_by,
+                    now,
+                    now,
+                    uuid4().hex,
                 ),
             )
             return True
@@ -160,7 +183,8 @@ class DocumentRegistry:
         offset = (page - 1) * page_size
         with self._connect() as connection:
             total = connection.execute(
-                f"SELECT COUNT(*) FROM documents {where_clause}", parameters,
+                f"SELECT COUNT(*) FROM documents {where_clause}",
+                parameters,
             ).fetchone()[0]
             rows = connection.execute(
                 f"""
@@ -220,9 +244,11 @@ class DocumentRegistry:
             )
 
     @contextmanager
-    def document_lock(self, document_hash: str, *, timeout: float = 0) -> Iterator[None]:
-        # A separate SQLite lock per document avoids holding the registry's
-        # global write lock during external index IO. Process death releases it.
+    def document_lock(
+        self, document_hash: str, *, timeout: float = 0
+    ) -> Iterator[None]:
+        # 每个文档使用独立的 SQLite 锁，避免外部索引读写期间持续占用注册表全局写锁。
+        # 进程退出后，该锁会自动释放。
         lock_dir = self._db_path.with_suffix(self._db_path.suffix + ".locks")
         lock_dir.mkdir(parents=True, exist_ok=True)
         lock_name = hashlib.sha256(document_hash.encode("utf-8")).hexdigest()
@@ -275,7 +301,8 @@ class DocumentRegistry:
                 """
             )
             existing_columns = {
-                row["name"] for row in connection.execute("PRAGMA table_info(documents)")
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(documents)")
             }
             migrations = {
                 "generation": "TEXT NOT NULL DEFAULT ''",

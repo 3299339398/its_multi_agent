@@ -91,6 +91,7 @@ services:
       AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?Set a random AUTH_JWT_SECRET of at least 32 characters in .env}
       REDIS_URL: redis://redis:6379/0
       MILVUS_URI: http://milvus:19530
+      FILE_ARTIFACT_FOLDER: /workspace/its_multi_agent/backend/app/data/files
       MILVUS_MEMORY_COLLECTION: its_user_memories
     depends_on:
       mysql:
@@ -120,6 +121,7 @@ services:
       KNOWLEDGE_SERVICE_TOKEN: ${KNOWLEDGE_SERVICE_TOKEN:?Set a random knowledge service token of at least 32 characters in .env}
       MILVUS_URI: http://milvus:19530
       MILVUS_COLLECTION: its_knowledge
+      INGESTION_TASK_DB_PATH: /workspace/runtime/knowledge/ingestion_tasks.db
       DOCUMENT_REGISTRY_PATH: /workspace/runtime/knowledge/document_registry.db
       LEXICAL_INDEX_PATH: /workspace/runtime/knowledge/lexical_index.db
       TMP_MD_FOLDER_PATH: /workspace/runtime/knowledge/tmp

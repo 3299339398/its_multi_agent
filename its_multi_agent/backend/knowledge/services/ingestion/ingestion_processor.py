@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 class IngestionProcessor:
-    """Extract, split and persist documents in semantic and lexical indexes."""
+    """提取并切分文档，将结果写入语义索引和词法索引。"""
 
     def __init__(self):
         self.vector_store = VectorStoreRepository()
@@ -66,7 +66,9 @@ class IngestionProcessor:
             try:
                 self.vector_store.delete_document(index_hash, knowledge_space, domain)
             except Exception:
-                logger.exception("关键词索引写入失败，向量补偿删除也失败: %s", index_hash)
+                logger.exception(
+                    "关键词索引写入失败，向量补偿删除也失败: %s", index_hash
+                )
             raise
         return chunks_added
 
@@ -78,7 +80,7 @@ class IngestionProcessor:
         knowledge_space: str = "default",
         domain: str = "general",
     ) -> int:
-        """Backfill BM25 data without rewriting vectors."""
+        """补建 BM25 数据，不重复写入向量。"""
         chunks, index_hash = self._prepare_chunks(
             file_path,
             document_hash,
@@ -108,9 +110,12 @@ class IngestionProcessor:
             raise RuntimeError(f"文件加载失败: {error}") from error
 
         source_file_name = source_name or os.path.basename(file_path)
-        index_hash = document_hash or hashlib.sha256(
-            f"{knowledge_space}\0{domain}\0{source_file_name}".encode("utf-8")
-        ).hexdigest()
+        index_hash = (
+            document_hash
+            or hashlib.sha256(
+                f"{knowledge_space}\0{domain}\0{source_file_name}".encode("utf-8")
+            ).hexdigest()
+        )
         for document in documents:
             document.metadata["title"] = MarkDownUtils.extract_title(source_file_name)
             document.metadata["source_name"] = source_file_name
@@ -127,6 +132,10 @@ class IngestionProcessor:
             ),
         )
         return (
-            [document for document in filter_complex_metadata(chunks) if document.page_content.strip()],
+            [
+                document
+                for document in filter_complex_metadata(chunks)
+                if document.page_content.strip()
+            ],
             index_hash,
         )

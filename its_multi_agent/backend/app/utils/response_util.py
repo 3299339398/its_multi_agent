@@ -9,6 +9,7 @@ from its_multi_agent.backend.app.schemas.response import (
     FinishMessageBody,
     SourceMessageBody,
     PlanMessageBody,
+    GroundingTraceMessageBody,
     StreamStatus,
     PacketMeta,
     ContentKind,
@@ -32,6 +33,15 @@ class ResponseFactory:
         return StreamPacket(
             id=str(uuid.uuid4()), content=SourceMessageBody(sources=sources),
             status=StreamStatus.IN_PROGRESS, metadata=PacketMeta(createTime=str(datetime.now())),
+        )
+
+    @staticmethod
+    def build_grounding_trace(trace: dict) -> StreamPacket:
+        return StreamPacket(
+            id=str(uuid.uuid4()),
+            content=GroundingTraceMessageBody(**trace),
+            status=StreamStatus.IN_PROGRESS,
+            metadata=PacketMeta(createTime=str(datetime.now())),
         )
 
     @staticmethod

@@ -1,63 +1,91 @@
+"""Fetch remote knowledge articles and save them as Markdown source files."""
+
+import argparse
+import logging
 import os
 import time
-from  its_multi_agent.backend.knowledge.services.crawler.client import KnowledgeApiClient
-from  its_multi_agent.backend.knowledge.services.crawler.parser import HtmlParser
-from  its_multi_agent.backend.knowledge.utils.text_utils import  TextUtils
-from  its_multi_agent.backend.knowledge.config.settings import  settings
-from  its_multi_agent.backend.knowledge.repositories.file_repository import FileRepository
+from pathlib import Path
+from uuid import uuid4
+
+from its_multi_agent.backend.knowledge.config.settings import settings
+from its_multi_agent.backend.knowledge.services.crawler.client import KnowledgeApiClient
+from its_multi_agent.backend.knowledge.services.crawler.parser import HtmlParser
+from its_multi_agent.backend.knowledge.utils.text_utils import TextUtils
 
 
-def  main():
-
-    success=0
-    fail=0
-    for  i in range(1001):
-        print(f"[{i+1}/1000] 获取KnowledgeNo:{i+1}")
-
-        knowledge_content=KnowledgeApiClient.fetch_knowledge_content(knowledge_no=str(i+1))
-
-        if knowledge_content and knowledge_content['content']:
-
-            # 1.创建HTML解析器
-            parser = HtmlParser()
-
-            # 2.解析HTML为MarkDown
-            md_content=parser.parse_html_to_markdown(str(i+1),knowledge_content)
-
-            # 3.生成语义化文件名 {KnowledgeNo}1-{title}.md
-            # 3.1 获取文件名
-            md_title=knowledge_content.get('title',"无标题")
-
-            # 3.2 清洗文件名（非法字符处理）
-            clean_title=TextUtils.clean_filename(md_title.strip())
-
-            # 3.3 限制文件名长度
-            if len(clean_title)>50:
-                clean_title=clean_title[:50].rstrip("_")
-
-            # 4.构建MarkDown文件名
-
-            file_name=f"{i+1:04d}-{clean_title}.md"
-
-            # 5.构建文件路径
-            file_path=os.path.join(settings.CRAWL_OUTPUT_DIR, file_name)
-
-            # 6.保存文件到指定目录
-            FileRepository.save_file(md_content,file_path)
-            success+=1
-            print(f" {i+1}-> 保存成功:{file_name} ")
-
-        else:
-            fail+=1
-            print(f" {i+1}-> 暂无内容,保存失败")
+logger = logging.getLogger(__name__)
 
 
-        time.sleep(0.2)
+def _save_markdown(output_dir: Path, filename: str, content: str) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    destination = output_dir / filename
+    temporary = output_dir / f".{filename}.{uuid4().hex}.tmp"
+    try:
+        temporary.write_text(content, encoding="utf-8")
+        os.replace(temporary, destination)
+    finally:
+        temporary.unlink(missing_ok=True)
 
-    print(f"\n爬取完成! 成功: {success}, 失败: {fail}")
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="按编号抓取远端知识文章并保存为 Markdown"
+    )
+    parser.add_argument("--start", type=int, default=1, help="起始知识编号（包含）")
+    parser.add_argument("--end", type=int, default=1000, help="结束知识编号（包含）")
+    parser.add_argument("--delay", type=float, default=0.2, help="请求之间的等待秒数")
+    parser.add_argument("--retries", type=int, default=3, help="每篇文章的最大请求次数")
+    parser.add_argument("--timeout", type=float, default=10.0, help="单次请求超时秒数")
+    parser.add_argument(
+        "--output-dir", type=Path, default=Path(settings.CRAWL_OUTPUT_DIR)
+    )
+    return parser
 
 
+def main(argv=None) -> int:
+    args = build_parser().parse_args(argv)
+    if args.start < 1 or args.end < args.start:
+        print("编号范围无效：要求 1 <= start <= end。")
+        return 2
+    if args.delay < 0 or args.retries < 1 or args.timeout <= 0:
+        print("延迟不能为负数，重试次数和请求超时必须大于 0。")
+        return 2
 
-if __name__ == '__main__':
-    main()
+    parser = HtmlParser()
+    success = 0
+    failed = 0
+    total = args.end - args.start + 1
+    for index, knowledge_no in enumerate(range(args.start, args.end + 1), start=1):
+        print(f"[{index}/{total}] 获取知识编号 {knowledge_no}")
+        for attempt in range(1, args.retries + 1):
+            try:
+                record = KnowledgeApiClient.fetch_knowledge_content(
+                    str(knowledge_no),
+                    timeout=args.timeout,
+                )
+                markdown = parser.parse_html_to_markdown(str(knowledge_no), record)
+                title = str(record.get("title") or "无标题").strip()
+                clean_title = (
+                    TextUtils.clean_filename(title)[:50].rstrip(" ._") or "无标题"
+                )
+                filename = f"{knowledge_no:04d}-{clean_title}.md"
+                _save_markdown(args.output_dir, filename, markdown)
+                success += 1
+                print(f"  保存成功：{filename}")
+                break
+            except (OSError, RuntimeError, ValueError, TypeError) as error:
+                if attempt == args.retries:
+                    failed += 1
+                    logger.warning("知识编号 %s 抓取失败: %s", knowledge_no, error)
+                    print(f"  抓取失败：{error}")
+                elif args.delay:
+                    time.sleep(args.delay * attempt)
+        if index < total and args.delay:
+            time.sleep(args.delay)
 
+    print(f"抓取完成：成功 {success}，失败 {failed}。")
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

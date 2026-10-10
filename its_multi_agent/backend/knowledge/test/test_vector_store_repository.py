@@ -1,4 +1,7 @@
 import unittest
+from unittest.mock import patch
+from types import SimpleNamespace
+from pymilvus import CollectionSchema, FieldSchema, DataType
 
 from langchain_core.documents import Document
 
@@ -128,6 +131,35 @@ class VectorStoreRepositoryTest(unittest.TestCase):
         repository.delete_document("hash-a")
 
         self.assertEqual(database.delete_calls, ['document_hash == "hash-a"'])
+
+    def test_fixed_legacy_schema_fills_optional_heading_fields(self):
+        schema = CollectionSchema([
+            FieldSchema("pk", DataType.VARCHAR, is_primary=True, max_length=100),
+            FieldSchema("text", DataType.VARCHAR, max_length=10000),
+            FieldSchema("vector", DataType.FLOAT_VECTOR, dim=2),
+            FieldSchema("h1", DataType.VARCHAR, max_length=100),
+            FieldSchema("h2", DataType.VARCHAR, max_length=100),
+        ])
+        database = SimpleNamespace(col=SimpleNamespace(schema=schema), _text_field="text")
+        documents = [Document(page_content="one", metadata={"h1": "A", "h2": "B"}),
+                     Document(page_content="two", metadata={"h1": "C"})]
+        result = VectorStoreRepository._compatible_documents(database, documents)
+        self.assertEqual(result[1].metadata, {"h1": "C", "h2": ""})
+        self.assertNotIn("h2", documents[1].metadata)
+
+    def test_delete_cleans_scoped_and_legacy_collections(self):
+        legacy, scoped = FakeVectorDatabase(), FakeVectorDatabase()
+        repository = VectorStoreRepository(vector_database=legacy)
+        with patch.object(repository, "_database_for_scope", return_value=scoped):
+            repository.delete_document("scope-hash", "hr", "policy")
+        self.assertEqual(scoped.delete_calls, ['document_hash == "scope-hash"'])
+        self.assertEqual(legacy.delete_calls, scoped.delete_calls)
+
+    def test_registered_deleted_document_is_not_returned(self):
+        document = Document(page_content="stale", metadata={"document_hash": "deleted-hash"})
+        repository = VectorStoreRepository(vector_database=FakeVectorDatabase(search_results=[(document, 0.1)]))
+        with patch("its_multi_agent.backend.knowledge.repositories.document_registry.document_registry.get_status", return_value="deleted"):
+            self.assertEqual(repository.search_similarity_with_score("question"), [])
 
 
 if __name__ == "__main__":

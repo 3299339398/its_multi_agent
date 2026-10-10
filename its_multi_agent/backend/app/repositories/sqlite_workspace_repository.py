@@ -38,6 +38,9 @@ class SQLiteWorkspaceRepository:
         with self._connect() as db:
             db.execute('INSERT OR IGNORE INTO workspaces(id,user_id,name,description,plugins_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?)',
                        ('default', user_id, '默认工作区', '通用智能服务工作区', json.dumps(plugins), now, now))
+            # 默认工作区始终暴露当前注册的能力，是否实际启用仍由每次请求决定。
+            db.execute('UPDATE workspaces SET plugins_json=?, updated_at=? WHERE user_id=? AND id=?',
+                       (json.dumps(plugins), now, user_id, 'default'))
         return self.get(user_id, 'default')
 
     def create(self, user_id, workspace_id, name, description, plugins):

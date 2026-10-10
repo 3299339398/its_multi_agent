@@ -1,4 +1,4 @@
-"""LangGraph orchestration for request-scoped complex tasks."""
+"""使用 LangGraph 编排单次请求中的复杂任务。"""
 from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
@@ -14,10 +14,10 @@ class TaskGraphState(TypedDict, total=False):
 
 
 def build_task_graph(executor, *, execute: bool = True):
-    """Build a fresh graph bound to one PlanExecutor request.
+    """为一次 PlanExecutor 请求创建独立的任务图。
 
-    Nodes call the existing provider-aware methods; LangGraph owns the state
-    transition boundary, while SSE snapshots remain emitted by PlanExecutor.
+    节点复用已有的模型服务调用方法，由 LangGraph 管理状态转换，
+    SSE 状态快照仍由 PlanExecutor 发送。
     """
     graph = StateGraph(TaskGraphState)
 
@@ -31,8 +31,11 @@ def build_task_graph(executor, *, execute: bool = True):
     async def execute_node(state):
         if state.get("error"):
             return state
-        await executor.execute_plan(state["plan"], state["goal"], state["history"],
-                                    state.get("has_attachments", False), state.get("attachment_sources") or [])
+        async for _snapshot in executor.execute_plan(
+            state["plan"], state["goal"], state["history"],
+            state.get("has_attachments", False), state.get("attachment_sources") or [],
+        ):
+            pass
         return state
 
     graph.add_node("planner", plan_node)

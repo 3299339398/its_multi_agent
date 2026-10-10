@@ -45,4 +45,12 @@ plugin_registry.register(PluginManifest(
 plugin_registry.register(PluginManifest(
     id="files", name="文件输出", description="生成受限的文本、Markdown、JSON 或 CSV 文件",
     tools=("create_file",), capabilities=("file_output",), enabled_by_default=False,
+    requires_confirmation=True,
+))
+plugin_registry.register(PluginManifest(
+    id="coding", name="工程修改", description="在服务端授权的工程目录内读取、修改代码并运行预设检查",
+    tools=("list_code_files", "read_code_file", "search_code", "replace_code",
+           "create_code_file", "run_code_check"),
+    capabilities=("code_read", "code_edit", "code_check"),
+    requires_confirmation=True, enabled_by_default=False,
 ))

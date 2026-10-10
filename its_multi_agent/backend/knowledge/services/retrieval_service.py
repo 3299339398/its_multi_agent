@@ -4,22 +4,29 @@ import re
 import hashlib
 from collections import OrderedDict
 from threading import Lock
-from typing import Dict,List,Any
+from typing import Dict, List, Any
 
 from langchain_community.utils.math import cosine_similarity
 
 from its_multi_agent.backend.knowledge.utils.markdown_utils import MarkDownUtils
-from its_multi_agent.backend.knowledge.repositories.lexical_index_repository import LexicalIndexRepository
-from its_multi_agent.backend.knowledge.repositories.vector_store_repository import VectorStoreRepository
-from its_multi_agent.backend.knowledge.services.ingestion.parent_child_splitter import ParentChildSplitter
-from its_multi_agent.backend.knowledge.services.cross_encoder_reranker import CrossEncoderReranker
+from its_multi_agent.backend.knowledge.repositories.lexical_index_repository import (
+    LexicalIndexRepository,
+)
+from its_multi_agent.backend.knowledge.repositories.vector_store_repository import (
+    VectorStoreRepository,
+)
+from its_multi_agent.backend.knowledge.services.ingestion.parent_child_splitter import (
+    ParentChildSplitter,
+)
+from its_multi_agent.backend.knowledge.services.cross_encoder_reranker import (
+    CrossEncoderReranker,
+)
 from its_multi_agent.backend.knowledge.config.settings import settings
-logging.basicConfig(level=logging.INFO)
+
 logger = logging.getLogger(__name__)
 
 from typing import List
 from langchain_core.documents import Document
-
 
 
 class RetrievalService:
@@ -36,7 +43,9 @@ class RetrievalService:
         self._embedding_cache = OrderedDict()
         self._embedding_cache_lock = Lock()
 
-    def rough_ranking(self, user_query, mds_metadata: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def rough_ranking(
+        self, user_query, mds_metadata: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
         """
          对标题进行粗排
          基于jieba进行标题的分词匹配
@@ -56,7 +65,7 @@ class RetrievalService:
         # 2.遍历mds_metadata(所有md的元数据)
         for md_metadata in mds_metadata:
             # 2.1 获取md标题
-            md_metadata_title = md_metadata['title']
+            md_metadata_title = md_metadata["title"]
 
             # 2.2 判断标题是否存在
             if not md_metadata_title or not md_metadata_title.strip():
@@ -66,23 +75,37 @@ class RetrievalService:
             user_query_char = set(user_query)
             md_metadata_title_char = set(md_metadata_title)
             unique_char = user_query_char | md_metadata_title_char
-            char_score = len(user_query_char & md_metadata_title_char) / len(unique_char) if len(unique_char) > 0 else 0
+            char_score = (
+                len(user_query_char & md_metadata_title_char) / len(unique_char)
+                if len(unique_char) > 0
+                else 0
+            )
 
             # 2.3.2 在用jieba词项切(影响因素大一些)
             user_query_word = set(jieba.lcut(user_query))
             md_metadata_title_word = set(jieba.lcut(md_metadata_title))
             unique_word = user_query_word | md_metadata_title_word
-            word_score = len(user_query_word & md_metadata_title_word) / len(unique_word) if len(unique_word) > 0 else 0
+            word_score = (
+                len(user_query_word & md_metadata_title_word) / len(unique_word)
+                if len(unique_word) > 0
+                else 0
+            )
 
             # 2.3.3 计算粗排分数：字符级+词性项级(侧重)
-            roughing_score = word_score * ROUGHIN_WORD_WEIGHT + char_score * (1 - ROUGHIN_WORD_WEIGHT)
+            roughing_score = word_score * ROUGHIN_WORD_WEIGHT + char_score * (
+                1 - ROUGHIN_WORD_WEIGHT
+            )
 
-            md_metadata['roughing_score'] = float(roughing_score)
+            md_metadata["roughing_score"] = float(roughing_score)
 
         # 3.根据标题的元数据（roughing_score）排序并且留下前50个
-        return sorted(mds_metadata, key=lambda x: x['roughing_score'], reverse=True)[:50]
+        return sorted(mds_metadata, key=lambda x: x["roughing_score"], reverse=True)[
+            :50
+        ]
 
-    def fine_ranking(self, user_query: str, rough_mds_metadata: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def fine_ranking(
+        self, user_query: str, rough_mds_metadata: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
         """
          对标题进行精排
          基于嵌入模型相似性以及cosine_similarity()
@@ -104,7 +127,7 @@ class RetrievalService:
         query_embedding = self._cached_embed_document(user_query)
 
         # 3. 获取粗排后的标题
-        roughing_title = [md_metadata['title'] for md_metadata in rough_mds_metadata]
+        roughing_title = [md_metadata["title"] for md_metadata in rough_mds_metadata]
 
         # 4. 标题的向量值
         roughing_title_embeddings = self.vector_store.embed_documents(roughing_title)
@@ -112,7 +135,9 @@ class RetrievalService:
         # 5. 计算问题和粗排标题的相似度（余弦相似分数）分数值越大 代表问题和标题越相似
         # flatten()--->一维数组[0.1,0.4,0.01,0.6...]
         # X:1  Y:[1,2,3,4,5]   similarity=[0.1,0.4,0.01,0.6,0.3]【-1,0】
-        similarity = cosine_similarity([query_embedding], roughing_title_embeddings).flatten()
+        similarity = cosine_similarity(
+            [query_embedding], roughing_title_embeddings
+        ).flatten()
 
         # 6. 遍历粗排元数据
         ROUGH_HEIGHT = 0.3
@@ -124,17 +149,19 @@ class RetrievalService:
             if sim < 0:
                 sim = 0
             # b. 获取粗排
-            roughing_score = md_metadata['roughing_score']
+            roughing_score = md_metadata["roughing_score"]
 
             # c. 加权求最终精排分数
             final_score = roughing_score * ROUGH_HEIGHT + sim * SIM_HEIGHT
 
             # d. 存放到md_metadata 元数据中
-            md_metadata['sim_score'] = sim
-            md_metadata['final_score'] = final_score
+            md_metadata["sim_score"] = sim
+            md_metadata["final_score"] = final_score
 
         # 7. 排序
-        sim_mds_metadata = sorted(rough_mds_metadata, key=lambda x: x['final_score'], reverse=True)[:5]
+        sim_mds_metadata = sorted(
+            rough_mds_metadata, key=lambda x: x["final_score"], reverse=True
+        )[:5]
 
         # 8. 返回
         return sim_mds_metadata
@@ -177,6 +204,8 @@ class RetrievalService:
                     domain,
                     settings.BM25_TOP_K,
                 ):
+                    if not VectorStoreRepository._document_active(document):
+                        continue
                     document.metadata["matched_query"] = query
                     document.metadata["matched_queries"] = [query]
                     document.metadata["bm25_ranks"] = [document.metadata["bm25_rank"]]
@@ -190,7 +219,9 @@ class RetrievalService:
         )
 
         # 3. 合并两路检索的文档列表
-        total_candidates = based_vector_candidates + bm25_candidates + based_title_candidates
+        total_candidates = (
+            based_vector_candidates + bm25_candidates + based_title_candidates
+        )
 
         # 4. 对合并后的文档列表去重
         unique_candidates = self._deduplicate(total_candidates)
@@ -216,8 +247,10 @@ class RetrievalService:
         )
 
     @staticmethod
-    def _diversify(documents: List[Document], limit: int, max_per_document: int = 2) -> List[Document]:
-        """Keep high scoring evidence while preventing one document from monopolizing results."""
+    def _diversify(
+        documents: List[Document], limit: int, max_per_document: int = 2
+    ) -> List[Document]:
+        """保留高分证据，同时避免单个文档占据全部结果。"""
         if limit <= 0 or max_per_document <= 0:
             return []
         selected = []
@@ -240,7 +273,7 @@ class RetrievalService:
             else:
                 deferred.append(document)
         if len(selected) < limit:
-            selected.extend(deferred[:limit - len(selected)])
+            selected.extend(deferred[: limit - len(selected)])
         return selected
 
     def _search_based_vector(
@@ -280,19 +313,23 @@ class RetrievalService:
                 if parent_id in seen_parents:
                     continue
                 seen_parents.add(parent_id)
-                metadata.update({
-                    "chunk_type": "parent",
-                    "matched_child": document.page_content,
-                    "matched_query": matched_query or user_question,
-                    "matched_queries": [matched_query or user_question],
-                    "retrieval_rank": rank,
-                    "retrieval_ranks": [rank],
-                    "vector_score": float(score),
-                })
-                based_vector_candidates.append(Document(
-                    page_content=parent_content,
-                    metadata=metadata,
-                ))
+                metadata.update(
+                    {
+                        "chunk_type": "parent",
+                        "matched_child": document.page_content,
+                        "matched_query": matched_query or user_question,
+                        "matched_queries": [matched_query or user_question],
+                        "retrieval_rank": rank,
+                        "retrieval_ranks": [rank],
+                        "vector_score": float(score),
+                    }
+                )
+                based_vector_candidates.append(
+                    Document(
+                        page_content=parent_content,
+                        metadata=metadata,
+                    )
+                )
             else:
                 document.metadata["matched_query"] = matched_query or user_question
                 document.metadata["matched_queries"] = [matched_query or user_question]
@@ -338,21 +375,28 @@ class RetrievalService:
         for fine_md_metadata in fine_mds_metadata:
             try:
                 # 3.1 打开文件
-                with open(fine_md_metadata['path'], "r", encoding="utf-8") as f:
+                with open(fine_md_metadata["path"], "r", encoding="utf-8") as f:
                     content = f.read().strip()
                 # 3.2 判断content内容长度
                 # a.短md知识
                 if len(content) < 3000:
                     # 不切分
-                    doc = Document(page_content=content, metadata={
-                        "path": fine_md_metadata['path'],
-                        "title": fine_md_metadata['title'],
-                    })
+                    doc = Document(
+                        page_content=content,
+                        metadata={
+                            "path": fine_md_metadata["path"],
+                            "title": fine_md_metadata["title"],
+                        },
+                    )
                     based_title_candidates.append(doc)
                 # b. 长md知识 切分
                 else:
-                    doc_chunks = self._deal_long_title_content(content, fine_md_metadata, user_query)
-                    based_title_candidates.extend(doc_chunks)  # doc_chunks 列表中元素打散了
+                    doc_chunks = self._deal_long_title_content(
+                        content, fine_md_metadata, user_query
+                    )
+                    based_title_candidates.extend(
+                        doc_chunks
+                    )  # doc_chunks 列表中元素打散了
             except Exception as e:
 
                 logger.error(f"打开文件失败:{e}")
@@ -382,15 +426,31 @@ class RetrievalService:
         # 3. 遍历合并后的每一个文档列表
         for document in total_candidates:
             # 去重（）
-            clean_content = re.sub(r'^文档来源:.*?(?=(\n|#))', '', document.page_content, flags=re.DOTALL).strip()#【加上】
+            clean_content = re.sub(
+                r"^文档来源:.*?(?=(\n|#))", "", document.page_content, flags=re.DOTALL
+            ).strip()  # 【加上】
             metadata = document.metadata
-            provenance = tuple(str(metadata.get(field, "")) for field in (
-                "knowledge_space", "domain", "document_hash", "source_name", "path",
-            ))
-            key = (provenance, "parent", str(metadata["parent_id"])) if metadata.get("parent_id") else (
-                provenance, "content", str(metadata.get("title", "")),
-                str(metadata.get("page", "")), str(metadata.get("sheet", "")),
-                hashlib.sha256(clean_content.encode("utf-8")).hexdigest(),
+            provenance = tuple(
+                str(metadata.get(field, ""))
+                for field in (
+                    "knowledge_space",
+                    "domain",
+                    "document_hash",
+                    "source_name",
+                    "path",
+                )
+            )
+            key = (
+                (provenance, "parent", str(metadata["parent_id"]))
+                if metadata.get("parent_id")
+                else (
+                    provenance,
+                    "content",
+                    str(metadata.get("title", "")),
+                    str(metadata.get("page", "")),
+                    str(metadata.get("sheet", "")),
+                    hashlib.sha256(clean_content.encode("utf-8")).hexdigest(),
+                )
             )
             if key not in seen:
                 seen[key] = document
@@ -407,14 +467,12 @@ class RetrievalService:
                 existing.metadata.get("retrieval_rank", settings.VECTOR_CHILD_TOP_K),
                 document.metadata.get("retrieval_rank", settings.VECTOR_CHILD_TOP_K),
             )
-            existing.metadata["retrieval_ranks"] = (
-                list(existing.metadata.get("retrieval_ranks", []))
-                + list(document.metadata.get("retrieval_ranks", []))
-            )
-            existing.metadata["bm25_ranks"] = (
-                list(existing.metadata.get("bm25_ranks", []))
-                + list(document.metadata.get("bm25_ranks", []))
-            )
+            existing.metadata["retrieval_ranks"] = list(
+                existing.metadata.get("retrieval_ranks", [])
+            ) + list(document.metadata.get("retrieval_ranks", []))
+            existing.metadata["bm25_ranks"] = list(
+                existing.metadata.get("bm25_ranks", [])
+            ) + list(document.metadata.get("bm25_ranks", []))
 
         # 4. 返回唯一的
         return unique_candidates
@@ -452,8 +510,13 @@ class RetrievalService:
         for candidate_index, unique_candidate in enumerate(unique_candidates):
             # 如何去判断 第二路长文档 or  第一路的文档和第二路?
             # 2.1 第二路的长文档
-            if "chunk_index" in unique_candidate.metadata and "similarity" in unique_candidate.metadata:
-                score_doc.append((unique_candidate, float(unique_candidate.metadata['similarity'])))
+            if (
+                "chunk_index" in unique_candidate.metadata
+                and "similarity" in unique_candidate.metadata
+            ):
+                score_doc.append(
+                    (unique_candidate, float(unique_candidate.metadata["similarity"]))
+                )
             # 2.2 第一路和第二路的短文档
             else:
                 need_embedding_docs.append(unique_candidate)
@@ -465,8 +528,10 @@ class RetrievalService:
             query_embedding = self._cached_embed_document(user_question)
 
             # 3.2 获取到需要向量的文档内容
-            embedding_docs_content = ["文档来源:" + doc.metadata.get('title', '') + doc.page_content for doc in
-                                      need_embedding_docs]
+            embedding_docs_content = [
+                "文档来源:" + doc.metadata.get("title", "") + doc.page_content
+                for doc in need_embedding_docs
+            ]
             # 3.3 计算需要向量的文档内容
             doc_embeddings = self._cached_embed_documents(embedding_docs_content)
 
@@ -494,13 +559,15 @@ class RetrievalService:
                 )
             else:
                 final_score = semantic_score
-            document.metadata.update({
-                "semantic_score": semantic_score,
-                "lexical_score": lexical_score,
-                "query_coverage_score": coverage_score,
-                "rrf_score": rrf_score,
-                "rerank_score": float(final_score),
-            })
+            document.metadata.update(
+                {
+                    "semantic_score": semantic_score,
+                    "lexical_score": lexical_score,
+                    "query_coverage_score": coverage_score,
+                    "rrf_score": rrf_score,
+                    "rerank_score": float(final_score),
+                }
+            )
             if final_score >= settings.RERANK_SCORE_THRESHOLD:
                 fused_docs.append((document, final_score))
 
@@ -508,7 +575,7 @@ class RetrievalService:
 
         # 5. 返回Top-N
         top_documents = []
-        for document, score in sorted_docs[:limit or settings.FINAL_TOP_K]:
+        for document, score in sorted_docs[: limit or settings.FINAL_TOP_K]:
             top_documents.append(document)
         return top_documents
 
@@ -553,8 +620,7 @@ class RetrievalService:
                 self._embedding_cache.popitem(last=False)
 
     def _ensure_embedding_cache(self) -> None:
-        # Some focused unit tests construct the service with __new__ to avoid
-        # external Milvus initialization.
+        # 部分单元测试通过 __new__ 构造服务，以跳过外部 Milvus 初始化。
         if not hasattr(self, "_embedding_cache"):
             self._embedding_cache = OrderedDict()
             self._embedding_cache_lock = Lock()
@@ -568,15 +634,13 @@ class RetrievalService:
 
         channel_scores = []
         if vector_ranks:
-            channel_scores.append(max(
-                1.0 / (settings.RRF_K + max(1, int(rank)))
-                for rank in vector_ranks
-            ))
+            channel_scores.append(
+                max(1.0 / (settings.RRF_K + max(1, int(rank))) for rank in vector_ranks)
+            )
         if bm25_ranks:
-            channel_scores.append(max(
-                1.0 / (settings.RRF_K + max(1, int(rank)))
-                for rank in bm25_ranks
-            ))
+            channel_scores.append(
+                max(1.0 / (settings.RRF_K + max(1, int(rank))) for rank in bm25_ranks)
+            )
         best_single_channel = 1.0 / (settings.RRF_K + 1)
         channel_count = 2 if settings.BM25_RETRIEVAL_ENABLED else 1
         return min(1.0, sum(channel_scores) / (best_single_channel * channel_count))
@@ -602,19 +666,23 @@ class RetrievalService:
         }
         identifier_score = (
             sum(
-                bool(re.search(
-                    rf"(?<![A-Za-z0-9]){re.escape(identifier)}(?![A-Za-z0-9])",
-                    content.lower(),
-                ))
+                bool(
+                    re.search(
+                        rf"(?<![A-Za-z0-9]){re.escape(identifier)}(?![A-Za-z0-9])",
+                        content.lower(),
+                    )
+                )
                 for identifier in identifiers
-            ) / len(identifiers)
+            )
+            / len(identifiers)
             if identifiers
             else token_recall
         )
         return float(token_recall * 0.55 + identifier_score * 0.45)
 
-    def _deal_long_title_content(self, content: str, fine_md_metadata: Dict[str, Any], user_query: str) -> List[
-        Document]:
+    def _deal_long_title_content(
+        self, content: str, fine_md_metadata: Dict[str, Any], user_query: str
+    ) -> List[Document]:
         """
          处理标题对应的长文本
          切分-->文档块--->算文档块和问题的相似度
@@ -631,10 +699,12 @@ class RetrievalService:
         chunks = self.document_splitter.split_text(content)
 
         # 2. 获取对应的标题
-        doc_chunks_title = fine_md_metadata['title']
+        doc_chunks_title = fine_md_metadata["title"]
 
         # 3. 标题注入到文档块中（第二次结构和第一次的拼接一定要一样）TODO
-        doc_chunks_inject_title = [f"文档来源:{doc_chunks_title}" + doc_chunk for doc_chunk in chunks]
+        doc_chunks_inject_title = [
+            f"文档来源:{doc_chunks_title}" + doc_chunk for doc_chunk in chunks
+        ]
 
         # 4. 对问题向量
         query_embedding = self._cached_embed_document(user_query)
@@ -643,7 +713,9 @@ class RetrievalService:
         doc_chunk_embeddings = self._cached_embed_documents(doc_chunks_inject_title)
 
         # 6. 计算相似性:doc_chunks_similarity[0.8,0.6,0.7,0.1,0.9]
-        doc_chunks_similarity = cosine_similarity([query_embedding], doc_chunk_embeddings).flatten()
+        doc_chunks_similarity = cosine_similarity(
+            [query_embedding], doc_chunk_embeddings
+        ).flatten()
 
         # 7. 获取3个相似性分数值高的三个索引 argsort->[3,1,2,0,4]->[2,0,4]--->[4,0,2]
         top_doc_chunks_indices = doc_chunks_similarity.argsort()[-3:][::-1]
@@ -654,18 +726,18 @@ class RetrievalService:
             doc = Document(
                 page_content=doc_chunks_inject_title[chunk_idx],  # 带上
                 metadata={
-                    "path": fine_md_metadata['path'],
-                    "title": fine_md_metadata['title'],
+                    "path": fine_md_metadata["path"],
+                    "title": fine_md_metadata["title"],
                     "chunk_index": int(chunk_idx),
-                    "similarity": float(doc_chunks_similarity[chunk_idx])
-                }
+                    "similarity": float(doc_chunks_similarity[chunk_idx]),
+                },
             )
             docs.append(doc)
 
-        return   docs
+        return docs
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     retrival_service = RetrievalService()
 
     # rough_ranking_result = retrival_service.rough_ranking("我的电脑开机之后没有任何的反应"）
@@ -683,7 +755,9 @@ if __name__ == '__main__':
     # result = retrival_service.retrieval("如何使用U盘安装Windows 7操作系统.")
     # result = retrival_service.retrieval("开机屏幕黑屏或蓝屏报错,无法正常进入系统怎么办")
     # result = retrival_service.retrieval("我的电脑经常死机该如何解决")
-    result = retrival_service.retrieval("手机、平板上的画面能无线传输到电视上播放吗") # 80-90%
+    result = retrival_service.retrieval(
+        "手机、平板上的画面能无线传输到电视上播放吗"
+    )  # 80-90%
 
     for r in result:
         print(r)

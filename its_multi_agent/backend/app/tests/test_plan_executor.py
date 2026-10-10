@@ -1,3 +1,4 @@
+from its_multi_agent.backend.app.tests.test_stream_retry_state import FailingModel
 import asyncio
 import json
 import unittest
@@ -39,13 +40,20 @@ class PlanTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([r["status"] for r in events[-1]["steps"]], ["blocked", "skipped"])
         self.worker.execute.assert_awaited_once()
         self.assertEqual(events[-1]["status"], "failed")
-        # Earlier emitted snapshots must not change after execution.
+        # 执行结束后，先前发出的快照内容不得发生变化。
         self.assertEqual(events[1]["steps"][0]["status"], "pending")
 
     async def test_disabled_service_is_rejected_before_execution(self):
         with patch("its_multi_agent.backend.app.services.plan_executor.PlanningAgent.plan", AsyncMock(return_value=plan("service"))):
             self.worker.execute = AsyncMock()
             events = [e async for e in self.worker.run("分步执行", [])]
+        self.worker.execute.assert_not_awaited()
+        self.assertEqual(events[-1]["status"], "failed")
+
+    async def test_coding_step_requires_complete_coding_tool_set(self):
+        with patch("its_multi_agent.backend.app.services.plan_executor.PlanningAgent.plan", AsyncMock(return_value=plan("coding"))):
+            self.worker.execute = AsyncMock()
+            events = [e async for e in self.worker.run("修改代码并运行测试", [])]
         self.worker.execute.assert_not_awaited()
         self.assertEqual(events[-1]["status"], "failed")
 
@@ -79,6 +87,7 @@ class PlanTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(needs_plan("你好"))
         self.assertFalse(needs_plan("你是哪个模型"))
         self.assertTrue(needs_plan("先解释递归，再举例"))
+        self.assertTrue(needs_plan("修改项目代码并运行测试"))
 
     async def test_partial_success_keeps_independent_work(self):
         raw = plan().model_dump()
@@ -108,7 +117,7 @@ class PlanApiTest(unittest.TestCase):
             patch(target + "memory_service.retrieve", AsyncMock(return_value="")),
             patch(target + "session_service.prepare_history", return_value=[{"role": "user", "content": "分步执行"}]),
             patch(target + "session_service.save_history") as save,
-            patch(target + "model_for", return_value=object()),
+            patch(target + "model_for", return_value=FailingModel()),
             patch("its_multi_agent.backend.app.services.plan_executor.PlanningAgent.plan", AsyncMock(side_effect=ValueError("private provider error"))),
             patch(target + "Runner.run_streamed") as generate,
             TestClient(app) as client,

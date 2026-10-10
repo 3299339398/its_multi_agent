@@ -9,10 +9,12 @@ logger = logging.getLogger(__name__)
 
 
 class CrossEncoderReranker:
-    """Optional final reranker loaded only when a model is configured."""
+    """可选的最终重排器，仅在配置模型后加载。"""
 
     def __init__(self, model_name: str | None = None, model=None) -> None:
-        self.model_name = model_name if model_name is not None else settings.CROSS_ENCODER_MODEL
+        self.model_name = (
+            model_name if model_name is not None else settings.CROSS_ENCODER_MODEL
+        )
         self._model = model
         self._load_failed = False
 
@@ -33,10 +35,9 @@ class CrossEncoderReranker:
         if model is None:
             return documents[:top_k]
         try:
-            scores = model.predict([
-                (question, document.page_content)
-                for document in documents
-            ])
+            scores = model.predict(
+                [(question, document.page_content) for document in documents]
+            )
         except Exception as error:
             logger.warning("Cross-Encoder 精排失败，回退融合排序: %s", error)
             return documents[:top_k]

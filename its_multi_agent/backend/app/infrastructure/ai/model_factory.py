@@ -9,7 +9,7 @@ from its_multi_agent.backend.app.services.model_endpoint_policy import validate_
 
 
 def _configured_profiles() -> dict[str, ModelProfile]:
-    """Load server-managed profiles from JSON; keys stay server-side."""
+    """从 JSON 加载服务端管理的模型配置，密钥始终保留在服务端。"""
     profiles: dict[str, ModelProfile] = {}
     raw = getattr(settings, "MODEL_PROFILES_JSON", "") or ""
     if raw:
@@ -81,4 +81,6 @@ def profile_from_temporary(data, profile_id: str = "temporary") -> ModelProfile:
                         model_name=data.model_name, base_url=validate_model_base_url(data.base_url, settings),
                         api_key=data.api_key, roles=tuple(data.roles),
                         supports_vision="vision" in data.roles,
-                        supports_reasoning="reasoning" in data.roles)
+                        supports_reasoning="reasoning" in data.roles,
+                        context_window_tokens=data.context_window_tokens,
+                        max_output_tokens=data.max_output_tokens)

@@ -1,7 +1,7 @@
 <template>
   <div class="app-wrapper">
     <div class="sidebar">
-      <div class="logo">ITS Knowledge</div>
+      <div class="logo">知行知识库</div>
       <el-menu
         :default-active="activeMenu"
         background-color="#f8fafb"
@@ -160,7 +160,7 @@ onBeforeUnmount(() => window.removeEventListener('auth:unauthorized', handleUnau
     }
 
     .logo::after {
-      content: 'ITS';
+      content: '知行';
       font-size: 18px;
     }
 

@@ -1,4 +1,4 @@
-"""Bounded plans; executors are application capabilities, never arbitrary code."""
+"""受限任务计划；执行器仅代表应用能力，不执行任意代码。"""
 from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -7,7 +7,7 @@ class PlanStep(BaseModel):
     model_config = ConfigDict(extra="forbid")
     id: str = Field(pattern=r"^step-[1-6]$")
     title: str = Field(min_length=1, max_length=100)
-    executor: Literal["research", "technical", "service"]
+    executor: Literal["research", "technical", "service", "coding"]
     task: str = Field(min_length=1, max_length=5000)
     depends_on: list[str] = Field(default_factory=list, max_length=5)
     success_criteria: str = Field(min_length=1, max_length=500)

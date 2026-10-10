@@ -1,3 +1,4 @@
+from its_multi_agent.backend.app.tests.test_stream_retry_state import FailingModel
 import json
 import unittest
 from types import SimpleNamespace
@@ -34,7 +35,7 @@ class AgentServiceErrorTest(unittest.IsolatedAsyncioTestCase):
                     patch("its_multi_agent.backend.app.services.agent_service.memory_service.extract_and_store", AsyncMock()),
                     patch("its_multi_agent.backend.app.services.agent_service.memory_service.retrieve", AsyncMock(return_value="")),
                     patch("its_multi_agent.backend.app.services.agent_service.session_service.prepare_history", return_value=[{"role": "user", "content": "hello"}]),
-                    patch("its_multi_agent.backend.app.services.agent_service.resolve_profile", return_value=SimpleNamespace(supports_tools=True)),
+                    patch("its_multi_agent.backend.app.services.agent_service.resolve_profile", return_value=SimpleNamespace(supports_tools=True, model_name="offline-test")),
                     patch("its_multi_agent.backend.app.services.agent_service.model_for", return_value=agent.model),
                     patch("its_multi_agent.backend.app.services.agent_service.build_orchestrator_agent", return_value=agent),
                     patch("its_multi_agent.backend.app.services.agent_service.GroundingWorkflow.prepare", AsyncMock(return_value=GroundingOutcome("direct"))),
@@ -63,8 +64,8 @@ class AgentServiceErrorTest(unittest.IsolatedAsyncioTestCase):
             patch("its_multi_agent.backend.app.services.agent_service.memory_service.retrieve", retrieve),
             patch("its_multi_agent.backend.app.services.agent_service.session_service.prepare_history", prepare),
             patch("its_multi_agent.backend.app.services.agent_service.session_service.save_history"),
-            patch("its_multi_agent.backend.app.services.agent_service.resolve_profile", return_value=object()),
-            patch("its_multi_agent.backend.app.services.agent_service.model_for", return_value=object()),
+            patch("its_multi_agent.backend.app.services.agent_service.resolve_profile", return_value=SimpleNamespace(supports_tools=True, model_name="offline-test")),
+            patch("its_multi_agent.backend.app.services.agent_service.model_for", return_value=FailingModel()),
             patch("its_multi_agent.backend.app.services.agent_service.build_orchestrator_agent", return_value=object()),
             patch("its_multi_agent.backend.app.services.agent_service.GroundingWorkflow.prepare", AsyncMock(return_value=GroundingOutcome("direct"))),
             patch("its_multi_agent.backend.app.services.agent_service.Runner.run_streamed", side_effect=[failed, succeeded]) as run,

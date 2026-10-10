@@ -8,7 +8,7 @@ from its_multi_agent.backend.app.config.settings import settings
 
 
 class UserRepository:
-    """Persistent application users stored separately from chat archives."""
+    """持久化应用用户信息，与聊天归档分开存储。"""
 
     def __init__(self, db_path: Optional[str] = None) -> None:
         default_path = Path(__file__).resolve().parent.parent / "data" / "users.db"
@@ -34,7 +34,7 @@ class UserRepository:
     def create_user(
         self, user_id: str, username: str, password_hash: str, role: str = "user",
     ) -> bool:
-        """Create a user and report whether the insert succeeded."""
+        """创建用户，并返回是否插入成功。"""
         now = datetime.now().isoformat(timespec="seconds")
         with self._connect() as connection:
             cursor = connection.execute(

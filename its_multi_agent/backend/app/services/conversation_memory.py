@@ -1,4 +1,4 @@
-"""Bounded extractive memory, preserving user wording and message provenance."""
+"""在长度限制内提取会话记忆，保留用户原话和消息来源。"""
 
 import json
 import re
@@ -21,11 +21,13 @@ _BUDGETS = {"corrections": 1000, "goals": 750, "constraints": 1600, "facts": 800
             "attempts": 800, "open_questions": 550}
 
 def task_memory_from_history(history: list[dict]) -> str:
-    """Compact, deterministic task ledger shared by router and agents."""
-    users = [m.get("content", "") for m in history if m.get("role") == "user"]
+    """供路由器与 Agent 共用的精简、确定性任务记录。"""
+    users = [
+        str(message.get("content", "")).strip()[:800]
+        for message in history if message.get("role") == "user"
+    ][-20:]
     if not users:
         return ""
-    text = "\n".join(str(x)[:800] for x in users[-20:])
     goals = [x for x in users if re.search(r"目标|希望|想要|需要|帮我|实现|修复", x)]
     constraints = [x for x in users if re.search(r"必须|不能|不要|只|限制|不超过|要求", x)]
     pending = [x for x in users if re.search(r"[?？]|怎么办|如何|为什么|还没|待", x)]
@@ -55,7 +57,7 @@ def merge_memory(state: dict, messages) -> dict:
     for message in messages:
         if message["role"] != "user":
             continue
-        # Split the complete message before bounding quotes, retaining late constraints.
+        # 先拆分完整消息，再限制引用长度，避免丢失消息末尾的约束。
         for sentence in re.split(r"(?<=[。！？!?；;])|\n+", message["content"]):
             quote = sentence.strip()
             if not quote:
@@ -63,14 +65,14 @@ def merge_memory(state: dict, messages) -> dict:
             categories = [name for name, pattern in _RULES if re.search(pattern, quote, re.I)]
             if not categories:
                 categories = ["goals"] if not result["goals"] else ["open_questions"]
-            # A correction is kept as a dated correction, never guessed to erase an unrelated fact.
+            # 保留修正内容及其时间，不推测性地删除无关事实。
             category = "corrections" if "corrections" in categories else categories[0]
             entries = result[category]
             short = quote[:320]
             entries[:] = [item for item in entries if item["quote"] != short]
             entries.append({"message_id": message["id"], "quote": short, "truncated": len(quote) > 320})
             if len(entries) > 16:
-                # Keep initial durable requirements as well as recent updates.
+                # 同时保留最初的长期要求和近期更新。
                 result[category] = entries[:4] + entries[-12:] if category in {"goals", "constraints"} else entries[-16:]
     return result
 
@@ -79,17 +81,16 @@ def render_memory(state: dict) -> str:
     selected = {}
     for category, label in _LABELS.items():
         entries = state.get(category, [])
-        # Reserve the first requirement, then prioritize the newest updates.
-        # Recursive compaction: retain durable first items and newest items;
-        # score explicit constraints/corrections and questions above casual text.
+        # 优先保留首条要求，再保留最新更新。
+        # 递归压缩时兼顾最初的长期要求和近期记录；
+        # 明确约束、修正和问题的优先级高于普通闲聊。
         def score(entry):
             quote = entry.get("quote", "")
             return (3 if category in {"corrections", "constraints", "goals"} else 1) + len(quote) / 10000
         ordered = sorted(entries, key=lambda item: (score(item), item.get("message_id", 0)), reverse=True)
         budget = _BUDGETS[category]
         values = []
-        # Goals and constraints need both ends of the history: the original
-        # requirement establishes intent, while recent entries carry changes.
+        # 目标与约束需要兼顾历史首尾：最初的要求确定意图，近期记录体现变更。
         if category in {"goals", "constraints"} and entries:
             first = min(entries, key=lambda item: item.get("message_id", 0))
             size = len(json.dumps(first, ensure_ascii=False))

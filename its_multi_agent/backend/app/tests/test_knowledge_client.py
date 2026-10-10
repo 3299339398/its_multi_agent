@@ -6,6 +6,7 @@ from its_multi_agent.backend.app.config.settings import settings
 from its_multi_agent.backend.app.infrastructure.tools.local.knowledge_base import request_knowledge
 from its_multi_agent.backend.app.infrastructure.tools.local.knowledge_base import query_knowledge
 from agents.tool_context import ToolContext
+from its_multi_agent.backend.app.schemas.agent_context import AgentRequestContext
 
 
 class KnowledgeClientAuthTest(unittest.TestCase):
@@ -16,7 +17,7 @@ class KnowledgeClientAuthTest(unittest.TestCase):
             new=AsyncMock(return_value=evidence),
         ) as request:
             result = asyncio.run(query_knowledge.on_invoke_tool(
-                ToolContext(context=None, tool_name="query_knowledge", tool_call_id="test", tool_arguments='{"question":"Warranty?"}'),
+                ToolContext(context=AgentRequestContext("harness-user", "harness-session", allowed_tools=frozenset({"query_knowledge"})), tool_name="query_knowledge", tool_call_id="test", tool_arguments='{"question":"Warranty?"}'),
                 '{"question":"Warranty?"}',
             ))
         self.assertEqual(result, evidence)

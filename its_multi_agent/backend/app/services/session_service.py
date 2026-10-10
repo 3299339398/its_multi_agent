@@ -10,7 +10,7 @@ class SessionService:
     """会话归档与推理上下文服务。"""
 
     DEFAULT_SESSION_ID = "default_session"
-    # Keep a useful working set; older messages remain in SQLite and summary.
+    # 仅保留当前需要的消息；更早的内容仍保存在 SQLite 归档和摘要中。
     DEFAULT_CONTEXT_MESSAGES = 40
 
     def __init__(self):
@@ -56,7 +56,7 @@ class SessionService:
         if assistant_messages:
             self._repo.append_message(user_id, target_session_id, assistant_messages[-1])
             history = [self._system_message(target_session_id)] + (
-                self._repo.load_recent_session(user_id, target_session_id) or []
+                self._repo.load_recent_session(user_id, target_session_id, 40) or []
             )
             context_builder.build(user_id, target_session_id, history, force_refresh=True)
 

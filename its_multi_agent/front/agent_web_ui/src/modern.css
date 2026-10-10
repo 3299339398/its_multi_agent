@@ -199,15 +199,14 @@ textarea:focus-visible {
 .tool-card-icon.knowledge { background: #f1edff; color: #7560ad; }
 .tool-card-icon.service { background: #edf2ff; color: #536daf; }
 .tool-card-icon.search { background: #e8f5f1; color: #147565; }
+.tool-card-icon.files { background: #fff3df; color: #986313; }
+.tool-card-icon.coding { background: #e9f0f7; color: #365f7d; }
 .tool-card-copy { display: grid; min-width: 0; gap: 2px; flex: 1; }
 .tool-card-copy strong { font-size: 13px; font-weight: 650; }
-.tool-card-copy small { color: var(--ui-muted); font-size: 11px; white-space: nowrap; }
+.tool-card-copy small { color: var(--ui-muted); font-size: 11px; line-height: 1.35; }
 .tool-card-state { color: var(--ui-faint); font-size: 10px; white-space: nowrap; }
 .tool-card.selected .tool-card-state { color: var(--ui-accent); font-weight: 650; }
 .tool-switch { width: 18px; height: 18px; margin: 0; accent-color: var(--ui-accent); cursor: pointer; }
-.other-tools { display: grid; gap: 4px; padding: 0 10px 8px; }
-.other-tool-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border-radius: 6px; color: var(--ui-muted); font-size: 12px; }
-.other-tool-row:hover { background: #f1f4f5; }
 
 .navigation-item {
   min-height: 40px;

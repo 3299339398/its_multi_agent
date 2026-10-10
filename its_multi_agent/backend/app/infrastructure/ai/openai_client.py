@@ -1,4 +1,4 @@
-"""Lazy compatibility accessors backed by the shared model profile factory."""
+"""基于共享模型配置工厂提供延迟加载的兼容访问接口。"""
 
 from its_multi_agent.backend.app.infrastructure.ai.model_factory import default_model
 

@@ -12,7 +12,7 @@ from its_multi_agent.backend.knowledge.config.settings import settings
 
 
 class LexicalIndexRepository:
-    """Persistent Chinese BM25 index backed by SQLite FTS5."""
+    """基于 SQLite FTS5 持久化的中文 BM25 索引。"""
 
     def __init__(self, db_path: str | None = None) -> None:
         self._db_path = Path(db_path or settings.LEXICAL_INDEX_PATH)
@@ -73,7 +73,9 @@ class LexicalIndexRepository:
         terms = self._query_terms(query)
         if not terms:
             return []
-        match_expression = " OR ".join(f'"{term.replace(chr(34), chr(34) * 2)}"' for term in terms)
+        match_expression = " OR ".join(
+            f'"{term.replace(chr(34), chr(34) * 2)}"' for term in terms
+        )
         with self._connect() as connection:
             rows = connection.execute(
                 """
@@ -96,12 +98,14 @@ class LexicalIndexRepository:
         documents = []
         for rank, row in enumerate(rows, start=1):
             metadata = json.loads(row["metadata_json"] or "{}")
-            metadata.update({
-                "parent_id": row["parent_id"],
-                "retrieval_channel": "bm25",
-                "bm25_rank": rank,
-                "bm25_score": float(row["bm25_score"]),
-            })
+            metadata.update(
+                {
+                    "parent_id": row["parent_id"],
+                    "retrieval_channel": "bm25",
+                    "bm25_rank": rank,
+                    "bm25_score": float(row["bm25_score"]),
+                }
+            )
             documents.append(Document(page_content=row["content"], metadata=metadata))
         return documents
 

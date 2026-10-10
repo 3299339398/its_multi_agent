@@ -35,11 +35,13 @@ class QueryService:
         if not settings.QUERY_REWRITE_ENABLED or settings.QUERY_REWRITE_VARIANTS <= 0:
             return [original]
 
-        # Clear, information-dense questions generally do not benefit from a
-        # second LLM call. The API layer performs a confidence-based retry for
-        # ambiguous questions, preserving recall without adding latency to the
-        # common path.
-        if settings.QUERY_REWRITE_ADAPTIVE and not force_rewrite and not self._needs_rewrite(original):
+        # 信息明确且内容充分的问题通常无需再次调用大模型。API 层仅对低置信度的
+        # 模糊问题重试，在保证召回率的同时避免增加常规请求的延迟。
+        if (
+            settings.QUERY_REWRITE_ADAPTIVE
+            and not force_rewrite
+            and not self._needs_rewrite(original)
+        ):
             return [original]
 
         prompt = f"""
@@ -66,8 +68,12 @@ class QueryService:
                 if not isinstance(item, str):
                     continue
                 candidate = item.strip()
-                if (candidate and len(candidate) <= 5000 and candidate not in result
-                        and self._constraints(original) == self._constraints(candidate)):
+                if (
+                    candidate
+                    and len(candidate) <= 5000
+                    and candidate not in result
+                    and self._constraints(original) == self._constraints(candidate)
+                ):
                     result.append(candidate)
                 if len(result) > settings.QUERY_REWRITE_VARIANTS:
                     break
@@ -78,23 +84,33 @@ class QueryService:
 
     @staticmethod
     def _constraints(text: str) -> Counter:
-        # Reject rewrites that drop/invent explicit identifiers, quantities, or
-        # comparison/negation operators. This is a conservative lexical guard,
-        # not a proof of semantic equivalence; the original query is always kept.
+        # 拒绝遗漏或编造明确标识、数量、比较符或否定词的改写。这是一项保守的
+        # 词法保护措施，并不用于证明语义等价；原始查询始终会被保留。
         identifiers = re.findall(r"[A-Za-z0-9]+(?:[-_./][A-Za-z0-9]+)*", text)
-        protected = [token.casefold() for token in identifiers if any(c.isdigit() for c in token)]
-        protected += [token.casefold() for token in re.findall(r"(?<![A-Za-z])[A-Z]{2,}(?![A-Za-z])", text)]
+        protected = [
+            token.casefold() for token in identifiers if any(c.isdigit() for c in token)
+        ]
+        protected += [
+            token.casefold()
+            for token in re.findall(r"(?<![A-Za-z])[A-Z]{2,}(?![A-Za-z])", text)
+        ]
         quantities = re.findall(
             r"(?<![A-Za-z0-9])\d+(?:\.\d+)?\s*(?:°[CF]|[%℃℉]|[A-Za-z]+|"
             r"毫秒|秒钟|分钟|小时|摄氏度|华氏度|千克|公斤|毫米|厘米|公里|"
-            r"秒|分|时|天|日|月|年|元|次|米|克|度)", text, flags=re.IGNORECASE,
+            r"秒|分|时|天|日|月|年|元|次|米|克|度)",
+            text,
+            flags=re.IGNORECASE,
         )
         operators = re.findall(
             r"<=|>=|!=|[<>≤≥]|不超过|不少于|不低于|不高于|至少|至多|大于|小于|低于|高于|超过|"
             r"未|没有|不能|不要|禁止|已|\b(?:not|without|before|after|above|below|under|over)\b",
-            text, flags=re.IGNORECASE,
+            text,
+            flags=re.IGNORECASE,
         )
-        return Counter(protected + [re.sub(r"\s+", "", item).casefold() for item in quantities + operators])
+        return Counter(
+            protected
+            + [re.sub(r"\s+", "", item).casefold() for item in quantities + operators]
+        )
 
     @staticmethod
     def build_sources(documents: List[Document]) -> list[KnowledgeSource]:
@@ -104,21 +120,35 @@ class QueryService:
     def _needs_rewrite(question: str) -> bool:
         if len(question) < settings.QUERY_REWRITE_MIN_LENGTH:
             return True
-        return any(token in question for token in (
-            "它", "这个", "那个", "刚才", "上一个", "前面", "继续", "咋", "怎么弄",
-        ))
+        return any(
+            token in question
+            for token in (
+                "它",
+                "这个",
+                "那个",
+                "刚才",
+                "上一个",
+                "前面",
+                "继续",
+                "咋",
+                "怎么弄",
+            )
+        )
 
     @staticmethod
     def should_expand_retrieval(documents: List[Document]) -> bool:
         top_score = max(
-            (float(document.metadata.get("rerank_score", 0.0)) for document in documents),
+            (
+                float(document.metadata.get("rerank_score", 0.0))
+                for document in documents
+            ),
             default=0.0,
         )
         return not documents or top_score < settings.ADAPTIVE_REWRITE_SCORE_THRESHOLD
 
-
-
-    def generate_answer(self, user_question:str, retrival_context: List[Document]) -> str:
+    def generate_answer(
+        self, user_question: str, retrival_context: List[Document]
+    ) -> str:
         """
         对接大语言模型的入口
         Args:
@@ -130,14 +160,14 @@ class QueryService:
         """
 
         # 1. 判断是否检索到了文档
-        if not  retrival_context:
+        if not retrival_context:
             return "未检索到任何相关的文档，无法提供回复"
-
 
         # 2. 处理检索到的知识内容
         retrival_context = json.dumps(
             [source.model_dump() for source in self.build_sources(retrival_context)],
-            ensure_ascii=False, allow_nan=False,
+            ensure_ascii=False,
+            allow_nan=False,
         )
 
         # 3. 定义提示词
@@ -167,8 +197,7 @@ class QueryService:
          """
 
         # 4. 调用模型
-        llm_response=self.llm.invoke(prompt)
-
+        llm_response = self.llm.invoke(prompt)
 
         # 5. 返回模型的结果
-        return  llm_response.content
+        return llm_response.content

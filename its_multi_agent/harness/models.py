@@ -13,6 +13,10 @@ class Scenario:
     forbidden_tools: Sequence[str] = field(default_factory=tuple)
     expected_tool_order: Sequence[str] = field(default_factory=tuple)
     expected_source_origins: Sequence[str] = field(default_factory=tuple)
+    expected_grounding_origins: Sequence[str] = field(default_factory=tuple)
+    expected_plan_executors: Sequence[str] = field(default_factory=tuple)
+    expected_route: str | None = None
+    max_latency_ms: float | None = None
 
 
 @dataclass(frozen=True)
@@ -23,6 +27,11 @@ class AgentRunResult:
     latency_ms: float = 0.0
     error: str | None = None
     sources: Sequence[Mapping[str, Any]] = field(default_factory=tuple)
+    plan_executors: Sequence[str] = field(default_factory=tuple)
+    grounding_trace: Sequence[Mapping[str, Any]] = field(default_factory=tuple)
+    route: str | None = None
+    first_event_latency_ms: float = 0.0
+    duplicate_side_effects: int | None = None
 
 
 @dataclass(frozen=True)
@@ -31,3 +40,5 @@ class ScenarioResult:
     passed: bool
     checks: Mapping[str, bool]
     error: str | None = None
+    latency_ms: float = 0.0
+    route: str | None = None

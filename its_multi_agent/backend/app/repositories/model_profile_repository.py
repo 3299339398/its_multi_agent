@@ -66,7 +66,7 @@ class UserModelProfileRepository:
                     "Cannot decrypt stored model credentials; restore the original encryption key or set "
                     "MODEL_PROFILE_LEGACY_JWT_SECRET to the previous JWT secret before migration"
                 ) from None
-        # Validate every existing credential before publishing a new independent key.
+        # 在启用新的独立加密密钥前，先校验所有已有凭据。
         if current is None:
             current = Fernet(self._persist_key(key_path))
         for profile_id, plaintext in migrated:
@@ -80,14 +80,17 @@ class UserModelProfileRepository:
         try:
             with os.fdopen(descriptor, "wb") as handle:
                 if os.name == "nt":
-                    identity = subprocess.run(["whoami"], check=True, capture_output=True, text=True).stdout.strip()
+                    identity = subprocess.run(
+                        ["whoami"], check=True, capture_output=True, text=True,
+                        encoding="utf-8", errors="replace",
+                    ).stdout.strip()
                     subprocess.run(["icacls", temporary, "/inheritance:r", "/grant:r", f"{identity}:F"],
                                    check=True, capture_output=True)
                 handle.write(Fernet.generate_key())
                 handle.flush()
                 os.fsync(handle.fileno())
             try:
-                # Hard-link publication is atomic and cannot replace a concurrent worker's key.
+                # 通过硬链接原子创建密钥文件，避免覆盖并发工作进程已创建的密钥。
                 os.link(temporary, path)
             except FileExistsError:
                 pass
@@ -97,10 +100,16 @@ class UserModelProfileRepository:
 
     @staticmethod
     def _capabilities(raw: str | None, roles: tuple) -> dict:
-        return json.loads(raw) if raw else {
+        capabilities = {
             "supports_tools": True, "supports_streaming": True,
             "supports_vision": "vision" in roles, "supports_reasoning": "reasoning" in roles,
+            "context_window_tokens": None, "max_output_tokens": None,
         }
+        if raw:
+            stored = json.loads(raw)
+            if isinstance(stored, dict):
+                capabilities.update(stored)
+        return capabilities
 
     @contextmanager
     def _connect(self):

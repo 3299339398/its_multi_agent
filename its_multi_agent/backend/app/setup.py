@@ -19,5 +19,6 @@ setup(
         "python-multipart",
         "Pillow",
         "rapidocr-onnxruntime==1.4.4",
+        "tiktoken",
     ],
 )

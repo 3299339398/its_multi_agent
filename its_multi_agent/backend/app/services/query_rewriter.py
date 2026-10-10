@@ -1,4 +1,4 @@
-"""Conservative normalization of colloquial user input for routing/retrieval."""
+"""保守地规范化口语化用户输入，供路由和检索使用。"""
 import re
 
 _FOLLOW = re.compile(r"^(?:那)?(?:它|这个|那个|上述|刚才|上一个)(.*)$")
@@ -17,7 +17,7 @@ def rewrite_query(question: str, history: list[dict] | None = None) -> str:
     text = (question or "").strip()
     if not text:
         return text
-    # Normalize speech habits for every domain, without adding facts.
+    # 规范化各领域的口语表达，但不添加原文不存在的事实。
     text = re.sub(r"\s+", " ", text)
     text = _FILLERS.sub("", text)
     text = _TAILS.sub("", text).strip()
@@ -40,6 +40,5 @@ def rewrite_query(question: str, history: list[dict] | None = None) -> str:
         return f"关于“{base[:500]}”{suffix or '的这个问题'}"
     if _SHORT.fullmatch(text.rstrip("呢？?。！! ")):
         return f"关于“{base[:500]}”的{text.rstrip('？?。！!')}"
-    # A short location/mode answer is already handled by navigation_context;
-    # don't turn it into a misleading retrieval query.
+    # 简短的位置或出行方式回答已由 navigation_context 处理，避免将其改写为误导性检索词。
     return text

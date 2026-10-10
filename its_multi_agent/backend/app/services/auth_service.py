@@ -56,7 +56,7 @@ class AuthService:
         }
 
     def register(self, username: str, password: str) -> Dict[str, str]:
-        """Register a client account. Public registration can never create admins."""
+        """注册普通用户账号；公开注册接口不允许创建管理员。"""
         username = username.strip()
         if not self.ID_PATTERN.fullmatch(username):
             raise ValueError("用户名只能包含字母、数字、下划线和短横线")

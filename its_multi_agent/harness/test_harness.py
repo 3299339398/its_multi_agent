@@ -1,3 +1,4 @@
+from its_multi_agent.backend.app.tests.test_stream_retry_state import FailingModel
 import asyncio
 import unittest
 import json
@@ -60,6 +61,13 @@ class HarnessTest(unittest.TestCase):
             {"source_id": "policy-1", "origin": "knowledge"},
         ))).passed)
 
+    def test_coding_expectation_requires_observed_plan_executor(self):
+        scenario = Scenario("coding", "修改代码", expected_plan_executors=("coding",))
+        self.assertFalse(grade_result(scenario, AgentRunResult("完成")).passed)
+        self.assertTrue(grade_result(
+            scenario, AgentRunResult("完成", plan_executors=("coding",)),
+        ).passed)
+
     def test_grades_expected_tools_and_content(self):
         scenario = Scenario(
             id="case-1", input="找服务站", expected_tools=("service_tool",), must_include=("服务站",)
@@ -94,6 +102,9 @@ class ProductionAdapterTest(unittest.IsolatedAsyncioTestCase):
             async def process_task(request, user_id, flag):
                 requests.append((request, user_id, flag))
                 packets = [
+                    {"content": {"contentType": "sagegpt/plan", "status": "running", "steps": [
+                        {"id": "step-1", "executor": "coding", "status": "running"},
+                    ]}},
                     {"content": {"kind": "PROCESS", "text": "working"}, "metadata": {"toolName": "lookup"}},
                     {"content": {"kind": "PROCESS", "text": "working"}, "metadata": {"toolName": "lookup", "agentName": "expert"}},
                     {"content": {"contentType": "sagegpt/sources", "sources": [{"source_id": "p1", "origin": "knowledge"}]}},
@@ -112,6 +123,7 @@ class ProductionAdapterTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.tool_calls, ("lookup", "lookup"))
         self.assertEqual(result.agent_transitions, ("expert",))
         self.assertEqual(result.sources[0]["source_id"], "p1")
+        self.assertEqual(result.plan_executors, ("coding",))
         request, user, flag = requests[0]
         self.assertTrue(user.startswith("harness-"))
         self.assertTrue(request.context.session_id.startswith("harness-"))
@@ -152,8 +164,8 @@ class ProductionAdapterTest(unittest.IsolatedAsyncioTestCase):
             patch(target + "attachment_service.prepare_history", return_value=history) as attachment_history,
             patch(target + "session_service.prepare_history", return_value=history) as prepare,
             patch(target + "session_service.save_history") as save,
-            patch(target + "resolve_profile", return_value=SimpleNamespace(supports_tools=True)),
-            patch(target + "model_for", return_value=object()),
+            patch(target + "resolve_profile", return_value=SimpleNamespace(supports_tools=True, model_name="offline-test")),
+            patch(target + "model_for", return_value=FailingModel()),
             patch(target + "GroundingWorkflow.prepare", grounding),
             patch(target + "Runner.run_streamed") as generate,
         ):

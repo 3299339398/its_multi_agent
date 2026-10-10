@@ -124,6 +124,45 @@ class TaskManagerTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
+    def test_other_manager_subscribes_to_live_persisted_events(self):
+        async def scenario():
+            producer, subscriber = TaskManager(self.repository), TaskManager(self.repository)
+            release = asyncio.Event()
+            async def fake_process(*args, **kwargs):
+                yield "data: first\n\n"
+                await release.wait()
+                yield self.finish()
+            with patch("its_multi_agent.backend.app.services.task_manager.MultiAgentService.process_task", fake_process):
+                run_id = await producer.start(ChatMessageRequest(query="hello", context=UserContext(session_id="s")), "u")
+                stream = subscriber.subscribe(run_id, "u")
+                self.assertEqual(await asyncio.wait_for(anext(stream), 2), "data: first\n\n")
+                release.set()
+                self.assertEqual(await asyncio.wait_for(anext(stream), 2), self.finish())
+                await producer._tasks[run_id].task
+                self.assertEqual(subscriber.get(run_id, "u")["status"], "completed")
+                await stream.aclose()
+        asyncio.run(scenario())
+
+    def test_remote_cancel_is_seen_by_lease_heartbeat(self):
+        async def scenario():
+            producer, controller = TaskManager(self.repository), TaskManager(self.repository)
+            producer._lease_seconds = 0.3
+            entered = asyncio.Event()
+            async def fake_process(*args, **kwargs):
+                entered.set()
+                await asyncio.Event().wait()
+                yield self.finish()
+            with patch("its_multi_agent.backend.app.services.task_manager.MultiAgentService.process_task", fake_process):
+                run_id = await producer.start(ChatMessageRequest(query="hello", context=UserContext(session_id="s")), "u")
+                await entered.wait()
+                self.assertTrue(await controller.cancel(run_id, "u"))
+                with self.assertRaises(asyncio.CancelledError):
+                    await asyncio.wait_for(producer._tasks[run_id].task, 2)
+                self.assertEqual(controller.get(run_id, "u")["status"], "cancelled")
+                packets = [packet async for packet in controller.subscribe(run_id, "u")]
+                self.assertEqual(json.loads(packets[-1].removeprefix("data: "))["status"], "FINISHED")
+        asyncio.run(scenario())
+
 
 if __name__ == "__main__":
     unittest.main()

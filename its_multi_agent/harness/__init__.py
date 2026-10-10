@@ -1,4 +1,4 @@
-"""Small, dependency-light evaluation harness for the ITS agents."""
+"""面向 ITS Agent 的轻量、低依赖评测框架。"""
 
 from .models import AgentRunResult, Scenario, ScenarioResult
 from .runner import run_scenario

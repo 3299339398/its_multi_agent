@@ -7,7 +7,7 @@ class FileArtifactCreateRequest(BaseModel):
     filename: str = Field(min_length=1, max_length=160)
     content: str = Field(max_length=2_000_000)
     mime_type: Literal[
-        "text/plain", "text/markdown", "application/json", "text/csv"
+        "text/plain", "text/markdown", "application/json", "text/csv", "text/html"
     ] = "text/plain"
     session_id: str | None = Field(default=None, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
     run_id: str | None = Field(default=None, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")

@@ -1,10 +1,13 @@
 import asyncio
 import httpx
 from typing import Dict
-from agents import function_tool
+from agents import RunContextWrapper, function_tool
 from its_multi_agent.backend.app.infrastructure.logging.logger import logger
 from its_multi_agent.backend.app.config.settings import settings
 from its_multi_agent.backend.app.services.agent_hooks import agent_hooks, AgentPolicyDenied
+from its_multi_agent.backend.app.services.agent_hooks import tool_allowed
+from its_multi_agent.backend.app.schemas.agent_context import AgentRequestContext
+from its_multi_agent.backend.app.schemas.tool import KnowledgeToolRequest
 
 
 async def request_knowledge(
@@ -60,23 +63,34 @@ async def request_knowledge(
 
 @function_tool
 async def query_knowledge(
+    ctx: RunContextWrapper[AgentRequestContext],
     question: str,
     knowledge_space: str = "default",
     domain: str = "general",
 ) -> Dict:
-    """Return original evidence excerpts and source IDs for a grounded answer."""
+    """返回生成有据回答所需的原始证据片段和来源 ID。"""
+    if not tool_allowed(ctx.context, "query_knowledge"):
+        return {"status": "error", "error_msg": "当前分支未启用知识库查询"}
+    try:
+        request = KnowledgeToolRequest(
+            question=question, knowledge_space=knowledge_space, domain=domain,
+        )
+    except Exception:
+        return {"status": "error", "error_msg": "知识库查询参数无效"}
     try:
         await agent_hooks.authorize_tool({
-            "tool_name": "query_knowledge", "question": question,
-            "knowledge_space": knowledge_space, "domain": domain,
+            "tool_name": "query_knowledge", "question": request.question,
+            "knowledge_space": request.knowledge_space, "domain": request.domain,
+            "context": ctx.context,
         })
-        return await request_knowledge(question, knowledge_space, domain, retrieve_only=True)
+        return await request_knowledge(request.question, request.knowledge_space, request.domain, retrieve_only=True)
     except AgentPolicyDenied as error:
         return {"status": "error", "error_msg": str(error)}
 
 
 async def main():
-    result = await query_knowledge(question="电脑不能开机怎么解决?")
+    # 直接运行本文件时调用底层客户端，函数工具本身需要 Agent 运行时上下文。
+    result = await request_knowledge("电脑不能开机怎么解决?", retrieve_only=True)
     print(result)
 
 

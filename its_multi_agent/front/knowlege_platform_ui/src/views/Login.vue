@@ -1,7 +1,7 @@
 <template>
   <main class="login-page">
     <section class="login-panel" aria-labelledby="login-title">
-      <div class="brand-mark" aria-hidden="true">ITS</div>
+      <div class="brand-mark" aria-hidden="true">知行</div>
       <div class="login-heading">
         <p>知识服务平台</p>
         <h1 id="login-title">{{ isRegistering ? '注册客户端账号' : '登录工作台' }}</h1>

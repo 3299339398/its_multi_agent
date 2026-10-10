@@ -11,9 +11,23 @@ class ProviderErrorInfo:
 
 
 def classify_agent_error(error: Exception) -> ProviderErrorInfo:
-    """Classify failures without pretending every failure came from the model API."""
+    """按实际来源分类故障，避免将所有错误都归因于模型接口。"""
     from its_multi_agent.backend.app.services.attachment_service import AttachmentError
+    from its_multi_agent.backend.app.services.context_budget import ContextBudgetError
+    from agents.exceptions import MaxTurnsExceeded
+    from its_multi_agent.backend.app.infrastructure.tools.local.file_output import FileArtifactGenerationError
 
+    if isinstance(error, FileArtifactGenerationError):
+        return ProviderErrorInfo(str(error), False)
+
+    if isinstance(error, MaxTurnsExceeded):
+        return ProviderErrorInfo(
+            "智能体达到最大执行轮数，任务未完成。请检查所需工具是否已启用并确认授权，或将任务拆分后重试。",
+            False,
+        )
+
+    if isinstance(error, ContextBudgetError):
+        return ProviderErrorInfo(str(error), False)
     if isinstance(error, AttachmentError):
         return ProviderErrorInfo(str(error), False)
     if isinstance(error, sqlite3.Error):
@@ -52,7 +66,7 @@ def classify_agent_error(error: Exception) -> ProviderErrorInfo:
 
 
 def classify_provider_error(error: Exception) -> ProviderErrorInfo:
-    """Convert provider failures into safe user-facing messages and retry policy."""
+    """将模型服务故障转换为安全的用户提示和重试策略。"""
     status_code = _find_status_code(error)
     details = _error_details(error).lower()
 

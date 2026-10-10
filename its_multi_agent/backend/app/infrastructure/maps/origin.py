@@ -11,7 +11,7 @@ RELATIVE_LOCATION_MARKERS = (
 
 
 def normalize_explicit_address(user_input: str) -> str:
-    """Reject relative phrases so they are never sent to geocoding."""
+    """拒绝相对位置表述，避免将其发送给地理编码服务。"""
     normalized = (user_input or "").strip()
     if any(marker in normalized.lower() for marker in RELATIVE_LOCATION_MARKERS):
         return ""

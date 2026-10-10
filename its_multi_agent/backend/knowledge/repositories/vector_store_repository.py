@@ -6,6 +6,7 @@ from typing import List
 
 from langchain_core.documents import Document
 from langchain_openai.embeddings import OpenAIEmbeddings
+from pymilvus import connections, DataType
 
 from its_multi_agent.backend.knowledge.config.settings import settings
 
@@ -14,7 +15,6 @@ try:
 except ImportError:  # Compatibility with older local environments.
     from langchain_community.vectorstores import Milvus
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -39,7 +39,7 @@ class VectorStoreRepository:
         self.embedding = OpenAIEmbeddings(
             model=settings.EMBEDDING_MODEL,
             openai_api_key=settings.API_KEY,
-            openai_api_base=settings.BASE_URL
+            openai_api_base=settings.BASE_URL,
         )
 
         connection_args = {"uri": settings.MILVUS_URI}
@@ -47,14 +47,38 @@ class VectorStoreRepository:
             connection_args["token"] = settings.MILVUS_TOKEN
         self._connection_args = connection_args
         self._uses_external_database = False
+        # langchain-milvus 0.1.x attempts to inspect an existing collection
+        # during construction. When the first upload is creating the collection,
+        # PyMilvus has no ORM alias yet and raises ConnectionNotExistException.
+        # Establish the alias explicitly so an empty Milvus instance can be used
+        # on the first document as well as on later requests.
+        if not connections.has_connection("default"):
+            connect_kwargs = {"uri": settings.MILVUS_URI}
+            if settings.MILVUS_TOKEN:
+                connect_kwargs["token"] = settings.MILVUS_TOKEN
+            connections.connect(alias="default", **connect_kwargs)
         self.vector_database = self._create_vector_database(settings.MILVUS_COLLECTION)
         self._vector_databases = {settings.MILVUS_COLLECTION: self.vector_database}
 
     def _create_vector_database(self, collection_name: str):
+        # langchain-milvus creates its own MilvusClient and uses a generated
+        # ``cm-*`` ORM alias. Register that exact alias before the constructor
+        # inspects the collection; connecting only the global ``default`` alias
+        # is insufficient with current PyMilvus.
+        from pymilvus import MilvusClient
+
+        probe = MilvusClient(**self._connection_args)
+        alias = probe._using
+        if not connections.has_connection(alias):
+            connect_kwargs = {"uri": settings.MILVUS_URI}
+            if settings.MILVUS_TOKEN:
+                connect_kwargs["token"] = settings.MILVUS_TOKEN
+            connections.connect(alias=alias, **connect_kwargs)
         return Milvus(
             connection_args=self._connection_args,
             collection_name=collection_name,
             embedding_function=self.embedding,
+            enable_dynamic_field=True,
         )
 
     def _database_for_scope(self, knowledge_space: str, domain: str):
@@ -62,7 +86,9 @@ class VectorStoreRepository:
         if self._uses_external_database:
             return self.vector_database
         if collection_name not in self._vector_databases:
-            self._vector_databases[collection_name] = self._create_vector_database(collection_name)
+            self._vector_databases[collection_name] = self._create_vector_database(
+                collection_name
+            )
         return self._vector_databases[collection_name]
 
     @staticmethod
@@ -111,16 +137,19 @@ class VectorStoreRepository:
 
         vector_database = self._database_for_scope(knowledge_space, domain)
 
-        # Remove remnants from an interrupted previous attempt before inserting.
+        documents = self._compatible_documents(vector_database, documents)
+        # 插入前清理上次中断操作留下的残余数据。
         self._delete_ids(vector_database, document_ids, reason="写入前清理")
         documents_chunks_added = 0
         try:
             for i in range(0, total_documents_chunks, batch_size):
-                batch = documents[i:i + batch_size]
-                batch_ids = document_ids[i:i + batch_size]
+                batch = documents[i : i + batch_size]
+                batch_ids = document_ids[i : i + batch_size]
                 vector_database.add_documents(batch, ids=batch_ids)
                 documents_chunks_added += len(batch)
-                logger.info(f"成功保存: {documents_chunks_added}/{total_documents_chunks}")
+                logger.info(
+                    f"成功保存: {documents_chunks_added}/{total_documents_chunks}"
+                )
             return documents_chunks_added
         except Exception:
             cleaned = self._delete_ids(vector_database, document_ids, reason="失败补偿")
@@ -130,13 +159,41 @@ class VectorStoreRepository:
                 logger.exception("文档向量写入失败，补偿删除未完成")
             raise
 
-    def _delete_ids(self, vector_database, document_ids: List[str], reason: str) -> bool:
+    @staticmethod
+    def _compatible_documents(database, documents):
+        # New collections use dynamic fields. Existing fixed collections cannot
+        # change schema in place; fill their optional columns without dropping data.
+        collection = getattr(database, "col", None)
+        schema = getattr(collection, "schema", None)
+        if schema is None or getattr(schema, "enable_dynamic_field", False):
+            return documents
+        defaults = {
+            DataType.VARCHAR: "", DataType.STRING: "", DataType.BOOL: False,
+            DataType.INT8: 0, DataType.INT16: 0, DataType.INT32: 0, DataType.INT64: 0,
+            DataType.FLOAT: 0.0, DataType.DOUBLE: 0.0, DataType.JSON: {},
+        }
+        fields = [field for field in schema.fields
+                  if not field.is_primary and field.name != getattr(database, "_text_field", "text")
+                  and field.dtype in defaults]
+        compatible = []
+        for document in documents:
+            metadata = {field.name: document.metadata.get(field.name, defaults[field.dtype]) for field in fields}
+            compatible.append(Document(page_content=document.page_content, metadata=metadata))
+        logger.warning("Milvus 固定元数据集合 %s 使用兼容字段；保留新增元数据需迁移到新的动态字段集合", getattr(database, "collection_name", ""))
+        return compatible
+
+    def _delete_ids(
+        self, vector_database, document_ids: List[str], reason: str
+    ) -> bool:
         try:
             vector_database.delete(ids=document_ids)
             return True
         except Exception as error:
-            # A collection may not exist before the first insertion. In that case
-            # the subsequent insert creates it; insertion errors are still surfaced.
+            # 首次插入前集合可能尚不存在，后续插入会创建集合；插入异常仍会向上抛出。
+            detail = str(error).lower()
+            if "collection not found" in detail or "collection id" in detail:
+                logger.debug("Milvus %s跳过不存在的集合: %s", reason, error)
+                return True
             logger.debug("Milvus %s未完成: %s", reason, error)
             return False
 
@@ -148,7 +205,12 @@ class VectorStoreRepository:
     ) -> None:
         vector_database = self._database_for_scope(knowledge_space, domain)
         escaped_hash = document_hash.replace("\\", "\\\\").replace('"', '\\"')
-        vector_database.delete(expr=f'document_hash == "{escaped_hash}"')
+        expression = f'document_hash == "{escaped_hash}"'
+        vector_database.delete(expr=expression)
+        # The hash includes scope; deleting the same hash from the legacy
+        # collection cannot remove another knowledge space's document.
+        if vector_database is not self.vector_database:
+            self.vector_database.delete(expr=expression)
 
     @staticmethod
     def _document_id(document: Document, position: int) -> str:
@@ -164,7 +226,6 @@ class VectorStoreRepository:
         }
         raw = json.dumps(identity, ensure_ascii=False, sort_keys=True).encode("utf-8")
         return hashlib.sha256(raw).hexdigest()
-
 
     def embed_document(self, text: str) -> List[float]:
         """
@@ -188,7 +249,7 @@ class VectorStoreRepository:
         """
         return self.embedding.embed_documents(texts)
 
-    # Backward compatibility for callers outside this repository.
+    # 兼容仓储外部的现有调用方。
     embedd_documents = embed_documents
 
     def search_similarity_with_score(
@@ -210,8 +271,9 @@ class VectorStoreRepository:
         scoped_database = self._database_for_scope(knowledge_space, domain)
         results = scoped_database.similarity_search_with_score(user_question, limit)
         results = [
-            item for item in results
-            if self.document_matches_scope(item[0], knowledge_space, domain)
+            item
+            for item in results
+            if self.document_matches_scope(item[0], knowledge_space, domain) and self._document_active(item[0])
         ]
 
         is_default_scope = knowledge_space == "default" and domain == "general"
@@ -227,7 +289,7 @@ class VectorStoreRepository:
             seen = {self._result_key(document) for document, _ in results}
             for document, score in legacy_results:
                 key = self._result_key(document)
-                if key in seen or not self.document_matches_scope(
+                if key in seen or not self._document_active(document) or not self.document_matches_scope(
                     document, knowledge_space, domain
                 ):
                     continue
@@ -236,6 +298,15 @@ class VectorStoreRepository:
                 if len(results) >= limit:
                     break
         return results[:limit]
+
+    @staticmethod
+    def _document_active(document):
+        from its_multi_agent.backend.knowledge.repositories.document_registry import document_registry
+        document_hash = document.metadata.get("document_hash")
+        if not document_hash:
+            return True  # unregistered pre-registry data remains readable
+        status = document_registry.get_status(document_hash)
+        return status is None or status == "complete"
 
     @staticmethod
     def document_matches_scope(
@@ -249,15 +320,18 @@ class VectorStoreRepository:
         space_match = re.search(r"(?:^|\n)知识空间:([^\n]+)", searchable)
         domain_match = re.search(r"(?:^|\n)知识领域:([^\n]+)", searchable)
 
-        # Documents ingested before scoped knowledge existed belong to the
-        # backward-compatible default/general collection.
+        # 引入知识范围隔离前入库的文档归入兼容旧数据的 default/general 集合。
         actual_space = space_match.group(1).strip() if space_match else "default"
         actual_domain = domain_match.group(1).strip() if domain_match else "general"
         return actual_space == knowledge_space and actual_domain == domain
 
     @staticmethod
     def _result_key(document: Document):
-        return document.metadata.get("vector_id") or document.metadata.get("parent_id") or (
-            document.metadata.get("title", ""),
-            document.page_content[:100],
+        return (
+            document.metadata.get("vector_id")
+            or document.metadata.get("parent_id")
+            or (
+                document.metadata.get("title", ""),
+                document.page_content[:100],
+            )
         )

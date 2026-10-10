@@ -9,7 +9,7 @@ from its_multi_agent.backend.app.config.settings import settings
 
 
 class SQLiteMemoryRepository:
-    """Local long-term memory storage with lightweight text retrieval."""
+    """提供轻量文本检索的本地长期记忆存储。"""
 
     supports_vectors = False
 
@@ -102,9 +102,12 @@ class SQLiteMemoryRepository:
     def search_text(self, user_id: str, query: str, limit: int = 5) -> List[Dict[str, Any]]:
         rows = self.list(user_id, limit=200)
         query_terms = self._terms(query)
+        if not query_terms:
+            return []
         for row in rows:
             overlap = len(query_terms & self._terms(row["content"]))
             row["_score"] = overlap * 2 + float(row.get("importance", 0))
+        rows = [row for row in rows if row["_score"] >= 2]
         rows.sort(key=lambda row: (row["_score"], row["created_at"]), reverse=True)
         for row in rows:
             row.pop("_score", None)

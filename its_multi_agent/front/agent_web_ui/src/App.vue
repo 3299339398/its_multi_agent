@@ -4,9 +4,9 @@
     <div v-if="!isLoggedIn" class="login-container">
       <form class="login-form" @submit.prevent="handleLogin" novalidate>
         <div class="its-logo-flat login-logo">
-            <img src="/its-logo.svg" alt="ITS Logo" width="60" height="60"/>
+            <img src="/its-logo.svg" alt="知行 Logo" width="60" height="60"/>
           </div>
-        <h1 class="login-title">{{ isRegistering ? '注册客户端账号' : 'ITS系统登录' }}</h1>
+        <h1 class="login-title">{{ isRegistering ? '注册客户端账号' : '知行系统登录' }}</h1>
         <div class="login-input-group">
           <label for="username">用户名</label>
           <input 
@@ -63,10 +63,10 @@
             <div class="app-branding">
               <!-- 扁平风格的Logo -->
               <div class="its-logo-flat">
-                <img src="/its-logo.svg" alt="ITS Logo" width="40" height="40"/>
+                <img src="/its-logo.svg" alt="知行 Logo" width="40" height="40"/>
               </div>
               <div v-show="isSidebarExpanded" class="brand-copy">
-                <strong>ITS</strong>
+                <strong>知行</strong>
                 <span>智能服务助手</span>
               </div>
               
@@ -102,6 +102,16 @@
                 <select v-model="selectedProjectId" :disabled="isProcessing" aria-label="当前项目">
                   <option v-for="project in projects" :key="project.id" :value="project.id">{{ project.name }}</option>
                 </select>
+                <button
+                  v-if="selectedProjectId && selectedProjectId !== 'default'"
+                  class="workspace-delete"
+                  type="button"
+                  title="删除当前工作区"
+                  aria-label="删除当前工作区"
+                  :disabled="isProcessing || deletingWorkspaceId === selectedProjectId"
+                  @click.stop="deleteCurrentWorkspace"
+                ><Trash2 :size="15" aria-hidden="true" /></button>
+                <span v-if="workspaceDeleteError" class="workspace-create-error" role="alert">{{ workspaceDeleteError }}</span>
                 <form v-if="showWorkspaceCreate" class="workspace-create" @submit.prevent="createWorkspace">
                   <input v-model.trim="workspaceName" maxlength="64" placeholder="工作区名称" aria-label="工作区名称" autofocus />
                   <div class="workspace-create-actions"><button type="submit" :disabled="!workspaceName">创建</button><button type="button" @click="showWorkspaceCreate = false">取消</button></div>
@@ -122,34 +132,14 @@
                 <Brain :size="18" class="nav-icon" aria-hidden="true" />
                 <span class="nav-text">长期记忆</span>
               </div>
-              <button class="tools-toggle" type="button" :aria-expanded="toolsExpanded" @click="toolsExpanded = !toolsExpanded">
-                <span><Wrench :size="15" aria-hidden="true" />工具</span><ChevronDown :size="16" :class="{ rotated: toolsExpanded }" aria-hidden="true" />
+              <div class="navigation-item" :class="{ 'selected': selectedNavItem === 'files' }" @click="handleFiles">
+                <FileText :size="18" class="nav-icon" aria-hidden="true" />
+                <span class="nav-text">生成文件</span>
+              </div>
+              <button class="tools-toggle" type="button" :class="{ selected: selectedNavItem === 'tools' }" @click="handleTools">
+                <span><Wrench :size="16" aria-hidden="true" />工具与插件</span>
+                <span class="tools-entry-count">{{ enabledPlugins.length }}</span>
               </button>
-              <div v-show="toolsExpanded" class="tools-panel-content">
-              <div class="tools-intro">为当前对话选择可用能力</div>
-              <div class="tool-cards">
-                <div class="tool-card" :class="{ selected: enabledPlugins.includes('knowledge') || selectedNavItem === 'knowledge' }" @click="handleKnowledgeBase">
-                  <span class="tool-card-icon knowledge"><BookOpen :size="18" aria-hidden="true" /></span>
-                  <span class="tool-card-copy"><strong>知识库</strong><small>基于内部文档检索和问答</small></span>
-                  <input class="tool-switch" type="checkbox" value="knowledge" v-model="enabledPlugins" :disabled="isProcessing" aria-label="启用知识库" @click.stop />
-                </div>
-                <div class="tool-card" :class="{ selected: enabledPlugins.includes('map') || selectedNavItem === 'service' }" @click="handleServiceStation">
-                  <span class="tool-card-icon service"><MapPin :size="18" aria-hidden="true" /></span>
-                  <span class="tool-card-copy"><strong>服务站查询</strong><small>查找附近站点与路线</small></span>
-                  <input class="tool-switch" type="checkbox" value="map" v-model="enabledPlugins" :disabled="isProcessing" aria-label="启用服务站查询" @click.stop />
-                </div>
-                <div class="tool-card" :class="{ selected: enabledPlugins.includes('search') || selectedNavItem === 'network' }" @click="handleNetworkSearch">
-                  <span class="tool-card-icon search"><Search :size="18" aria-hidden="true" /></span>
-                  <span class="tool-card-copy"><strong>联网搜索</strong><small>获取新闻、天气等实时信息</small></span>
-                  <input class="tool-switch" type="checkbox" value="search" v-model="enabledPlugins" :disabled="isProcessing" aria-label="启用联网搜索" @click.stop />
-                </div>
-              </div>
-              <div v-if="plugins.some(plugin => !['map', 'search', 'knowledge'].includes(plugin.id))" class="other-tools">
-                <div v-for="plugin in plugins.filter(plugin => !['map', 'search', 'knowledge'].includes(plugin.id))" :key="plugin.id" class="other-tool-row">
-                  <span>{{ plugin.name }}</span><input class="tool-switch" type="checkbox" :value="plugin.id" v-model="enabledPlugins" :disabled="isProcessing" :aria-label="`启用${plugin.name}`" />
-                </div>
-              </div>
-              </div>
             </div>
 
             <!-- 历史会话列表 - 仅在展开状态显示 -->
@@ -210,7 +200,7 @@
             <div class="top-user-section">
               <button v-if="isMobile" ref="mobileSidebarToggle" class="mobile-sidebar-toggle" aria-label="展开侧边栏" title="展开侧边栏"
                 :aria-expanded="isSidebarExpanded" aria-controls="workspace-sidebar" @click="toggleSidebar"><Menu :size="20" aria-hidden="true" /></button>
-              <div class="workspace-title"><span class="workspace-eyebrow">ITS 工作台</span><h1 :title="workspaceTitle">{{ workspaceTitle }}</h1></div>
+              <div class="workspace-title"><span class="workspace-eyebrow">知行工作台</span><h1 :title="workspaceTitle">{{ workspaceTitle }}</h1></div>
               <div class="model-selector">
                 <label v-if="modelProfiles.length" for="model-profile">模型</label>
                 <select v-if="modelProfiles.length" id="model-profile" v-model="selectedModelProfile" :disabled="isProcessing">
@@ -218,11 +208,14 @@
                     {{ profile.name }}
                   </option>
                 </select>
+                <button v-if="selectedModelProfile && selectedModelProfile.startsWith('user-')" type="button" class="model-profile-delete" title="删除当前个人模型配置" aria-label="删除当前个人模型配置" :disabled="isProcessing" @click="deleteCurrentModelProfile"><Trash2 :size="15" aria-hidden="true" /></button>
                 <button type="button" class="model-config-button" aria-label="模型设置" title="模型设置" :aria-expanded="showModelConfig" @click="showModelConfig = !showModelConfig"><Settings2 :size="18" aria-hidden="true" /></button>
               </div>
               <div v-if="showModelConfig" class="model-config-panel">
                 <input v-model="customModel.name" placeholder="配置名称" />
                 <input v-model="customModel.model_name" placeholder="模型名称" />
+                <input v-model.number="customModel.context_window_tokens" type="number" min="1024" step="1024" aria-label="上下文窗口 token 数" placeholder="上下文窗口 token 数（默认 32768）" />
+                <input v-model.number="customModel.max_output_tokens" type="number" min="256" step="256" aria-label="最大输出 token 数" placeholder="最大输出 token 数（默认 4096）" />
                 <input v-model="customModel.base_url" placeholder="Base URL" />
                 <input v-model="customModel.api_key" type="password" placeholder="API Key" />
                 <select v-model="customModelMode"><option value="temporary">仅本次使用</option><option value="saved">保存配置</option></select>
@@ -258,9 +251,38 @@
             
             <KnowledgeWorkspace v-if="activeWorkspace === 'knowledge'" />
             <MemoryWorkspace v-else-if="activeWorkspace === 'memory'" :workspace-id="selectedProjectId" />
+            <FileArtifactsWorkspace v-else-if="activeWorkspace === 'files'" @preview="openFilePreview" />
+            <FilePreviewWorkspace v-else-if="activeWorkspace === 'preview'" :artifact-id="previewArtifactId" @back="closeFilePreview" />
+            <ToolsWorkspace v-else-if="activeWorkspace === 'tools'"
+              :plugins="plugins" :enabled-ids="enabledPlugins" :confirmed-ids="confirmedPlugins"
+              :allowed-ids="pluginWorkspace?.plugins || []" :workspace-name="pluginWorkspace?.name || ''"
+              :busy="isProcessing" :loading="isLoadingPlugins" :error="pluginLoadError" :describe="pluginDescription"
+              @toggle="toggleOptionalPlugin" @refresh="fetchPlugins(true)" @back="returnToChat" />
             <template v-else>
             <!-- 统一的消息展示区域 -->
             <div class="chat-message-container" ref="processContent">
+              <section v-if="sessionTasks.length || taskError || isLoadingTasks" class="task-status-panel" aria-label="后台任务状态">
+                <div class="task-status-header">
+                  <strong>后台任务</strong>
+                  <button type="button" class="task-refresh-button" :disabled="isLoadingTasks" @click="refreshSessionTasks">
+                    {{ isLoadingTasks ? '刷新中' : '刷新' }}
+                  </button>
+                </div>
+                <p v-if="taskError" class="task-status-error" role="alert">{{ taskError }}</p>
+                <div v-for="task in sessionTasks" :key="task.run_id" class="task-status-row">
+                  <div class="task-status-copy">
+                    <span class="task-status-name">{{ taskStatusLabel(task.status) }}</span>
+                    <small>{{ task.run_id.slice(0, 8) }} · {{ task.packet_count || 0 }} 个事件</small>
+                    <span v-if="task.error" class="task-status-error">{{ task.error }}</span>
+                  </div>
+                  <div class="task-status-actions">
+                    <button v-if="taskCanFollow(task)" type="button" class="task-action-button" :disabled="isProcessing" @click="followTask(task)">{{ taskActionLabel(task) }}</button>
+                    <button v-if="taskCanResume(task)" type="button" class="task-action-button primary" :disabled="resumingTaskId === task.run_id" @click="resumeTask(task)">
+                      {{ resumingTaskId === task.run_id ? '恢复中' : '恢复' }}
+                    </button>
+                  </div>
+                </div>
+              </section>
               <div class="history-page-status" v-if="isLoadingMessages || nextBeforeId || messageHistoryError">
                 <span v-if="isLoadingMessages" role="status">正在加载消息...</span>
                 <button v-else-if="nextBeforeId" class="history-page-button" :disabled="isProcessing" @click="loadOlderMessages">加载更早消息</button>
@@ -293,8 +315,11 @@
                  <!-- 消息内容 -->
                  <div class="message-content" v-show="msg.type !== 'THINKING' || !msg.collapsed">
                    <TaskProgress v-if="msg.type === 'PLAN'" :plan="msg.plan" />
-                   <AnswerMessage v-else-if="msg.type === 'assistant'" :text="msg.content" :sources="msg.sources || []" />
+                   <AnswerMessage v-else-if="msg.type === 'assistant'" :text="msg.content" :sources="msg.sources || []" @preview-file="openFilePreview" />
                    <div v-else class="markdown-body" v-html="renderMarkdown(msg.content)"></div>
+                   <button v-if="msg.type === 'THINKING'" type="button" class="manage-tools-link" @click="handleTools">
+                     <Wrench :size="14" aria-hidden="true" />选择工具与插件
+                   </button>
                    <span v-for="attachment in msg.attachments || []" :key="attachment.id" class="attachment-chip">
                      {{ attachment.name }}
                      <button type="button" class="attachment-remove" title="删除附件" aria-label="删除附件" @click="deleteAttachment(attachment.id)">×</button>
@@ -357,7 +382,10 @@
 import { ref, computed, onMounted, watch, nextTick, onUnmounted } from 'vue';
 import KnowledgeWorkspace from './components/KnowledgeWorkspace.vue';
 import MemoryWorkspace from './components/MemoryWorkspace.vue';
-import { PanelLeftClose, PanelLeftOpen, SquarePen, BookOpen, Brain, MapPin, Search, History, MessageSquare, Menu, Settings2, Paperclip, LocateFixed, ArrowUp, Square, Trash2, FolderKanban, Wrench, ChevronDown, SlidersHorizontal, Plus } from '@lucide/vue';
+import FileArtifactsWorkspace from './components/FileArtifactsWorkspace.vue';
+import FilePreviewWorkspace from './components/FilePreviewWorkspace.vue';
+import ToolsWorkspace from './components/ToolsWorkspace.vue';
+import { PanelLeftClose, PanelLeftOpen, SquarePen, BookOpen, Brain, MapPin, Search, History, MessageSquare, Menu, Settings2, Paperclip, LocateFixed, ArrowUp, Square, Trash2, FolderKanban, Wrench, ChevronDown, SlidersHorizontal, Plus, FileText, Code2 } from '@lucide/vue';
 import AnswerMessage from './components/AnswerMessage.vue';
 import TaskProgress from './components/TaskProgress.vue';
 import { normalizeSources } from './utils/citations';
@@ -377,7 +405,10 @@ export default {
   components: {
     KnowledgeWorkspace,
     MemoryWorkspace,
-    PanelLeftClose, PanelLeftOpen, SquarePen, BookOpen, Brain, MapPin, Search, History, MessageSquare, Menu, Settings2, Paperclip, LocateFixed, ArrowUp, Square, Trash2, FolderKanban, Wrench, ChevronDown, SlidersHorizontal, Plus,
+    FileArtifactsWorkspace,
+    FilePreviewWorkspace,
+    ToolsWorkspace,
+    PanelLeftClose, PanelLeftOpen, SquarePen, BookOpen, Brain, MapPin, Search, History, MessageSquare, Menu, Settings2, Paperclip, LocateFixed, ArrowUp, Square, Trash2, FolderKanban, Wrench, ChevronDown, SlidersHorizontal, Plus, FileText, Code2,
     AnswerMessage,
     TaskProgress,
   },
@@ -467,15 +498,25 @@ export default {
       isLoadingMessages.value = false;
       messageHistoryError.value = '';
       sessionListError.value = '';
+      sessionTasks.value = [];
+      taskError.value = '';
       modelProfiles.value = [];
       selectedModelProfile.value = '';
+      modelConfigMessage.value = '';
+      workspaceDeleteError.value = '';
+      deletingWorkspaceId.value = '';
       activeTemporaryModel.value = null;
-      customModel.value = { name: '', model_name: '', base_url: '', api_key: '', provider: 'openai-compatible', roles: ['reasoning', 'chat'] };
+      customModel.value = { name: '', model_name: '', base_url: '', api_key: '', provider: 'openai-compatible', roles: ['reasoning', 'chat'], context_window_tokens: null, max_output_tokens: null };
       customModelMode.value = 'temporary';
       showModelConfig.value = false;
       modelConfigMessage.value = '';
       plugins.value = [];
+      isLoadingPlugins.value = false;
+      pluginLoadError.value = '';
+      projects.value = [];
+      selectedProjectId.value = 'default';
       enabledPlugins.value = [];
+      confirmedPlugins.value = [];
       showUserInfo.value = false;
       selectedNavItem.value = '';
       activeWorkspace.value = 'chat';
@@ -511,7 +552,7 @@ export default {
     const customModelMode = ref('temporary');
     const activeTemporaryModel = ref(null);
     const modelConfigMessage = ref('');
-    const customModel = ref({ name: '', model_name: '', base_url: '', api_key: '', provider: 'openai-compatible', roles: ['reasoning', 'chat'] });
+    const customModel = ref({ name: '', model_name: '', base_url: '', api_key: '', provider: 'openai-compatible', roles: ['reasoning', 'chat'], context_window_tokens: null, max_output_tokens: null });
     const plugins = ref([]);
     const projects = ref([]);
     const selectedProjectId = ref('default');
@@ -519,6 +560,8 @@ export default {
     const showWorkspaceCreate = ref(false);
     const workspaceName = ref('');
     const workspaceCreateError = ref('');
+    const workspaceDeleteError = ref('');
+    const deletingWorkspaceId = ref('');
     const workModes = [
       { value: 'auto', label: '自动' },
       { value: 'chat', label: '快速对话' },
@@ -526,7 +569,9 @@ export default {
       { value: 'plan', label: '计划执行' },
     ];
     const enabledPlugins = ref([]);
-    const toolsExpanded = ref(true);
+    const confirmedPlugins = ref([]);
+    const isLoadingPlugins = ref(false);
+    const pluginLoadError = ref('');
     const selectedAttachments = ref([]);
     const attachmentInputRef = ref(null);
     const locationError = ref('');
@@ -541,15 +586,60 @@ export default {
     const isLoadingMessages = ref(false);
     const messageHistoryError = ref('');
     const sessionListError = ref('');
+    const sessionTasks = ref([]);
+    const isLoadingTasks = ref(false);
+    const taskError = ref('');
+    const resumingTaskId = ref('');
     const deletingSessionId = ref('');
     const pendingDeleteSessionId = ref('');
     const cancelActiveRequest = () => {
       const request = activeRequest;
+      // 使等待中的定位结果失效，防止取消后写入下一次请求的上下文。
+      locationGeneration += 1;
+      isLocating.value = false;
       interruptPlan(request);
+      if (request?.taskRunId && request.cancelTaskOnStop) {
+        void authFetch(`/api/tasks/${encodeURIComponent(request.taskRunId)}/cancel`, {
+          method: 'POST',
+        }).catch((error) => console.warn('后台任务取消失败:', error));
+      }
       activeRequest = null;
       request?.controller.abort();
       void request?.reader?.cancel().catch(() => {});
       isProcessing.value = false;
+    };
+
+    // 项目插件清单是后端授权边界。切换项目或发送请求前都重新取交集，
+    // 避免把上一个项目选择的插件或确认状态带到当前项目。
+    const currentProject = () => projects.value.find(project => project.id === selectedProjectId.value) || null;
+    const projectAllowsPlugin = (pluginId) => Boolean(currentProject()?.plugins?.includes(pluginId));
+    const pluginWorkspace = computed(() => currentProject());
+    const reconcileProjectPlugins = () => {
+      const project = currentProject();
+      if (!project) {
+        enabledPlugins.value = [];
+        confirmedPlugins.value = [];
+        return;
+      }
+      const allowed = new Set(project.plugins || []);
+      enabledPlugins.value = enabledPlugins.value.filter(pluginId => allowed.has(pluginId));
+      confirmedPlugins.value = confirmedPlugins.value.filter(pluginId => allowed.has(pluginId));
+    };
+    const defaultPluginsForProject = (project) => {
+      const allowed = new Set(project?.plugins || []);
+      return plugins.value
+        .filter(plugin => allowed.has(plugin.id) && plugin.enabled_by_default && !plugin.requires_confirmation)
+        .map(plugin => plugin.id);
+    };
+    const requestPluginSelection = () => {
+      const project = currentProject();
+      if (!project) return { enabled: [], confirmed: [] };
+      const allowed = new Set(project.plugins || []);
+      const enabled = enabledPlugins.value.filter(pluginId => allowed.has(pluginId));
+      return {
+        enabled,
+        confirmed: confirmedPlugins.value.filter(pluginId => enabled.includes(pluginId)),
+      };
     };
 
     const detachActiveRequest = () => {
@@ -575,7 +665,10 @@ export default {
         const data = await readJsonResponse(response);
         if (generation !== authGeneration) return;
         modelProfiles.value = Array.isArray(data.profiles) ? data.profiles : [];
-        if (!selectedModelProfile.value && modelProfiles.value.length) {
+        const availableProfileIds = new Set(modelProfiles.value.map(profile => profile.id));
+        if (!modelProfiles.value.length) {
+          selectedModelProfile.value = '';
+        } else if (!selectedModelProfile.value || !availableProfileIds.has(selectedModelProfile.value)) {
           selectedModelProfile.value = modelProfiles.value[0].id;
         }
       } catch (error) {
@@ -583,46 +676,140 @@ export default {
       }
     };
 
-    const fetchPlugins = async () => {
+    const fetchPlugins = async (preserveSelection = false) => {
+      if (isLoadingPlugins.value || (preserveSelection && isProcessing.value)) return;
       const generation = authGeneration;
+      isLoadingPlugins.value = true;
+      pluginLoadError.value = '';
       try {
         const response = await authFetch('/api/plugins');
-        if (!response.ok) return;
+        if (!response.ok) throw new Error(await readErrorMessage(response, '读取工具列表失败'));
         const data = await readJsonResponse(response);
         if (generation !== authGeneration) return;
         plugins.value = Array.isArray(data.plugins) ? data.plugins : [];
-        enabledPlugins.value = plugins.value
-          .filter(plugin => plugin.enabled_by_default)
-          .map(plugin => plugin.id);
+        // 项目列表与插件列表是两个异步请求；项目尚未加载时不要把全局默认值
+        // 写入选择状态，避免随后 reconcile 时因竞态把默认插件全部清空。
+        const project = currentProject();
+        if (!preserveSelection) {
+          if (project) enabledPlugins.value = defaultPluginsForProject(project);
+          confirmedPlugins.value = [];
+        }
+        const known = new Set(plugins.value.map(plugin => plugin.id));
+        enabledPlugins.value = enabledPlugins.value.filter(id => known.has(id));
+        confirmedPlugins.value = confirmedPlugins.value.filter(id => enabledPlugins.value.includes(id));
+        reconcileProjectPlugins();
       } catch (error) {
-        console.warn('读取工具插件失败:', error);
+        if (generation === authGeneration) pluginLoadError.value = error.message || '读取工具列表失败';
+      } finally {
+        if (generation === authGeneration) isLoadingPlugins.value = false;
       }
     };
 
     const fetchProjects = async () => {
+      const generation = authGeneration;
       try {
         let response = await authFetch('/api/workspaces');
         if (!response.ok) response = await authFetch('/api/projects');
         if (!response.ok) return;
         const data = await readJsonResponse(response);
+        if (generation !== authGeneration) return;
         projects.value = Array.isArray(data.workspaces) ? data.workspaces : (Array.isArray(data.projects) ? data.projects : []);
+        if (!projects.value.some(project => project.id === selectedProjectId.value)) {
+          selectedProjectId.value = projects.value[0]?.id || 'default';
+        }
+        if (!enabledPlugins.value.length && plugins.value.length) {
+          enabledPlugins.value = defaultPluginsForProject(currentProject());
+        }
+        reconcileProjectPlugins();
       } catch (error) { console.warn('读取项目失败:', error); }
     };
 
+    const pluginDescription = (plugin) => ({
+      files: '生成并下载文本或静态网页文件',
+      coding: '读取、修改代码并运行检查',
+    })[plugin.id] || plugin.description;
+
+    const toggleOptionalPlugin = (plugin, event = null) => {
+      if (isProcessing.value) return;
+      const checked = event ? Boolean(event.target?.checked) : !enabledPlugins.value.includes(plugin.id);
+      if (checked && !projectAllowsPlugin(plugin.id)) {
+        if (event?.target) event.target.checked = false;
+        return;
+      }
+      if (checked && plugin.requires_confirmation) {
+        const accepted = window.confirm(`启用“${plugin.name}”后，Agent 可以执行该能力。确认继续？`);
+        if (!accepted) {
+          if (event?.target) event.target.checked = false;
+          return;
+        }
+        confirmedPlugins.value = [...new Set([...confirmedPlugins.value, plugin.id])];
+      }
+      enabledPlugins.value = checked
+        ? [...new Set([...enabledPlugins.value, plugin.id])]
+        : enabledPlugins.value.filter(id => id !== plugin.id);
+      if (!checked) {
+        confirmedPlugins.value = confirmedPlugins.value.filter(id => id !== plugin.id);
+      }
+    };
+
+    const toggleCorePlugin = (pluginId, event) => {
+      const plugin = plugins.value.find(item => item.id === pluginId);
+      if (!plugin) return;
+      toggleOptionalPlugin(plugin, event);
+    };
+
     const createWorkspace = async () => {
+      const generation = authGeneration;
       const name = workspaceName.value.trim();
       if (!name) return;
       workspaceCreateError.value = '';
       try {
         const response = await authFetch('/api/workspaces', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: name.trim(), description: `${name.trim()} 工作区`, plugins: enabledPlugins.value }) });
+          body: JSON.stringify({ name: name.trim(), description: `${name.trim()} 工作区`, plugins: requestPluginSelection().enabled }) });
         const data = await readJsonResponse(response);
+        if (generation !== authGeneration) return;
         if (!response.ok) throw new Error(data.detail || '创建工作区失败');
         projects.value = [...projects.value, data];
         selectedProjectId.value = data.id;
         workspaceName.value = '';
         showWorkspaceCreate.value = false;
-      } catch (error) { workspaceCreateError.value = error.message || '创建工作区失败'; }
+      } catch (error) {
+        if (generation === authGeneration) workspaceCreateError.value = error.message || '创建工作区失败';
+      }
+    };
+
+    const deleteCurrentWorkspace = async () => {
+      const workspaceId = selectedProjectId.value;
+      if (!workspaceId || workspaceId === 'default' || deletingWorkspaceId.value) return;
+      const workspace = projects.value.find(project => project.id === workspaceId);
+      if (!workspace || !window.confirm(`确定删除工作区“${workspace.name}”吗？该工作区下的会话也将无法继续访问。`)) return;
+      const generation = authGeneration;
+      deletingWorkspaceId.value = workspaceId;
+      workspaceDeleteError.value = '';
+      try {
+        const response = await authFetch(`/api/workspaces/${encodeURIComponent(workspaceId)}`, { method: 'DELETE' });
+        if (!response.ok) throw new Error(await readErrorMessage(response, '删除工作区失败'));
+        if (generation !== authGeneration) return;
+        projects.value = projects.value.filter(project => project.id !== workspaceId);
+        cancelActiveRequest();
+        sessionGeneration += 1;
+        selectedSessionId.value = '';
+        chatMessages.value = [];
+        sessionTasks.value = [];
+        taskError.value = '';
+        nextBeforeId.value = null;
+        messageHistoryError.value = '';
+        selectedProjectId.value = projects.value.some(project => project.id === 'default')
+          ? 'default'
+          : (projects.value[0]?.id || 'default');
+        await fetchProjects();
+        await fetchPlugins();
+        await fetchUserSessions();
+      } catch (error) {
+        if (generation === authGeneration) workspaceDeleteError.value = error.message || '删除工作区失败';
+      } finally {
+        if (generation === authGeneration) deletingWorkspaceId.value = '';
+      }
     };
 
     const applyCustomModel = async () => {
@@ -630,8 +817,14 @@ export default {
       if (!customModel.value.name || !customModel.value.model_name || !customModel.value.base_url || !customModel.value.api_key) {
         modelConfigMessage.value = '请填写完整模型配置'; return;
       }
+      const optionalTokenLimit = (value) => value == null || value === '' ? null : Number(value);
+      const modelPayload = {
+        ...customModel.value,
+        context_window_tokens: optionalTokenLimit(customModel.value.context_window_tokens),
+        max_output_tokens: optionalTokenLimit(customModel.value.max_output_tokens),
+      };
       if (customModelMode.value === 'saved') {
-        const response = await authFetch('/api/model-profiles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(customModel.value) });
+        const response = await authFetch('/api/model-profiles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(modelPayload) });
         if (generation !== authGeneration) return;
         if (!response.ok) {
           const message = await readErrorMessage(response, '保存失败');
@@ -645,9 +838,33 @@ export default {
         if (generation !== authGeneration) return;
         modelConfigMessage.value = '已保存并应用';
       } else {
-        selectedModelProfile.value = ''; activeTemporaryModel.value = { ...customModel.value }; modelConfigMessage.value = '已应用，仅本次请求使用';
+        selectedModelProfile.value = ''; activeTemporaryModel.value = modelPayload; modelConfigMessage.value = '已应用，仅本次请求使用';
       }
       showModelConfig.value = false;
+    };
+
+    const deleteCurrentModelProfile = async () => {
+      const profileId = selectedModelProfile.value;
+      if (!profileId || !profileId.startsWith('user-') || isProcessing.value) return;
+      const profile = modelProfiles.value.find(item => item.id === profileId);
+      if (!profile || !window.confirm(`确定删除模型配置“${profile.name}”吗？`)) return;
+      const generation = authGeneration;
+      modelConfigMessage.value = '';
+      try {
+        const response = await authFetch(`/api/model-profiles/${encodeURIComponent(profileId)}`, { method: 'DELETE' });
+        if (!response.ok) throw new Error(await readErrorMessage(response, '删除模型配置失败'));
+        if (generation !== authGeneration) return;
+        await fetchModelProfiles();
+        if (generation === authGeneration) {
+          modelConfigMessage.value = '模型配置已删除';
+          showModelConfig.value = true;
+        }
+      } catch (error) {
+        if (generation === authGeneration) {
+          modelConfigMessage.value = error.message || '删除模型配置失败';
+          showModelConfig.value = true;
+        }
+      }
     };
 
     const locationButtonTitle = computed(() => {
@@ -661,7 +878,7 @@ export default {
 
     const queryNeedsDeviceLocation = (query) => {
       const text = query.trim();
-      if (/(当前位置|我的位置|我这里|我这儿|这里|这儿|附近|周边)/i.test(text)) {
+      if (/(当前位置|我的位置|我现在在哪里|我在哪里|我在哪儿|我在哪|我这里|我这儿|这里|这儿|附近|周边)/i.test(text)) {
         return true;
       }
       if (/从.+?(到|去|前往|出发)/.test(text)) {
@@ -759,9 +976,37 @@ export default {
     // 当前选中的导航项
     const selectedNavItem = ref('');
     const activeWorkspace = ref('chat');
+    const previewArtifactId = ref('');
+    const previewReturnWorkspace = ref('files');
+    const openFilePreview = (artifactId) => {
+      if (!/^[0-9a-f]{32}$/.test(artifactId)) return;
+      previewReturnWorkspace.value = activeWorkspace.value === 'chat' ? 'chat' : 'files';
+      previewArtifactId.value = artifactId;
+      activeWorkspace.value = 'preview';
+      selectedNavItem.value = 'files';
+      closeMobileSidebar();
+    };
+    const closeFilePreview = () => {
+      activeWorkspace.value = previewReturnWorkspace.value;
+      selectedNavItem.value = previewReturnWorkspace.value === 'files' ? 'files' : '';
+      previewArtifactId.value = '';
+      if (/^#file-preview=[0-9a-f]{32}$/.test(window.location.hash)) {
+        window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      }
+    };
+    const openPreviewFromHash = () => {
+      if (!isLoggedIn.value) return;
+      const match = /^#file-preview=([0-9a-f]{32})$/.exec(window.location.hash);
+      if (match && !(activeWorkspace.value === 'preview' && previewArtifactId.value === match[1])) {
+        openFilePreview(match[1]);
+      }
+    };
     const workspaceTitle = computed(() => {
       if (activeWorkspace.value === 'knowledge') return '知识库';
       if (activeWorkspace.value === 'memory') return '长期记忆';
+      if (activeWorkspace.value === 'files') return '生成文件';
+      if (activeWorkspace.value === 'preview') return '网页预览';
+      if (activeWorkspace.value === 'tools') return '工具与插件';
       return sessions.value.find(session => session.session_id === selectedSessionId.value)?.title
         || chatMessages.value.find(message => message.type === 'user')?.content || '新会话';
     });
@@ -790,6 +1035,7 @@ export default {
     const handleKnowledgeBase = () => {
       closeMobileSidebar();
       cancelActiveRequest();
+      if (!projectAllowsPlugin('knowledge')) return;
       if (!enabledPlugins.value.includes('knowledge')) enabledPlugins.value = [...enabledPlugins.value, 'knowledge'];
       console.log('打开知识库查询');
       // 清空右侧内容但保持页面结构不变
@@ -807,11 +1053,34 @@ export default {
       activeWorkspace.value = 'memory';
       selectedSessionId.value = '';
     };
+
+    const handleTools = () => {
+      closeMobileSidebar();
+      selectedNavItem.value = 'tools';
+      activeWorkspace.value = 'tools';
+      if (!plugins.value.length && !isLoadingPlugins.value) void fetchPlugins(true);
+    };
+    const returnToChat = () => {
+      selectedNavItem.value = '';
+      activeWorkspace.value = 'chat';
+      nextTick(() => scrollToBottom());
+    };
+
+    const handleFiles = () => {
+      closeMobileSidebar();
+      cancelActiveRequest();
+      selectedNavItem.value = 'files';
+      activeWorkspace.value = 'files';
+      selectedSessionId.value = '';
+      sessionTasks.value = [];
+      taskError.value = '';
+    };
     
     // 处理服务站查询
 const handleNetworkSearch = () => {
   closeMobileSidebar();
   cancelActiveRequest();
+  if (!projectAllowsPlugin('search')) return;
   if (!enabledPlugins.value.includes('search')) enabledPlugins.value = [...enabledPlugins.value, 'search'];
   selectedNavItem.value = 'network';
   activeWorkspace.value = 'chat';
@@ -820,9 +1089,14 @@ const handleNetworkSearch = () => {
 };
 
 const handleServiceStation = () => {
-      closeMobileSidebar();
-      cancelActiveRequest();
-      if (!enabledPlugins.value.includes('map')) enabledPlugins.value = [...enabledPlugins.value, 'map'];
+       closeMobileSidebar();
+       cancelActiveRequest();
+       const mapPlugin = plugins.value.find(plugin => plugin.id === 'map');
+       if (!mapPlugin || !projectAllowsPlugin('map')) return;
+       if (!enabledPlugins.value.includes('map')) {
+         toggleOptionalPlugin(mapPlugin);
+         if (!enabledPlugins.value.includes('map')) return;
+       }
       console.log('打开服务站查询');
       // 清空右侧内容但保持页面结构不变
       processContent.value = null;
@@ -920,6 +1194,45 @@ const handleServiceStation = () => {
       }
     };
 
+    const fetchSessionTasks = async (sessionId = selectedSessionId.value) => {
+      if (!currentUser.value || !sessionId) {
+        sessionTasks.value = [];
+        taskError.value = '';
+        return;
+      }
+      const generation = authGeneration;
+      const selectedGeneration = sessionGeneration;
+      isLoadingTasks.value = true;
+      taskError.value = '';
+      try {
+        const response = await authFetch(`/api/sessions/${encodeURIComponent(sessionId)}/tasks`);
+        if (!response.ok) throw new Error(await readErrorMessage(response, '读取后台任务失败'));
+        const data = await readJsonResponse(response);
+        if (generation !== authGeneration || selectedGeneration !== sessionGeneration
+          || sessionId !== selectedSessionId.value) return;
+        sessionTasks.value = Array.isArray(data.tasks) ? data.tasks : [];
+      } catch (error) {
+        if (generation === authGeneration && selectedGeneration === sessionGeneration) {
+          taskError.value = error.message || '读取后台任务失败';
+        }
+      } finally {
+        if (generation === authGeneration && selectedGeneration === sessionGeneration) {
+          isLoadingTasks.value = false;
+        }
+      }
+    };
+
+    const refreshSessionTasks = () => fetchSessionTasks();
+    const taskStatusLabel = (status) => ({
+      queued: '排队中', running: '执行中', completed: '已完成',
+      failed: '执行失败', cancelled: '已取消',
+    }[status] || status || '未知状态');
+    const taskCanResume = (task) => Boolean(
+      task && ['failed', 'cancelled'].includes(task.status) && task.checkpoint,
+    );
+    const taskCanFollow = (task) => Boolean(task?.run_id);
+    const taskActionLabel = (task) => ['queued', 'running'].includes(task?.status) ? '查看进度' : '回放事件';
+
     const requestDeleteSession = (sessionId) => {
       if (!sessionId || deletingSessionId.value) return;
       pendingDeleteSessionId.value = pendingDeleteSessionId.value === sessionId ? '' : sessionId;
@@ -953,6 +1266,7 @@ const handleServiceStation = () => {
           cancelActiveRequest();
           sessionGeneration += 1;
           chatMessages.value = [];
+          sessionTasks.value = [];
           nextBeforeId.value = null;
           messageHistoryError.value = '';
           selectedSessionId.value = '';
@@ -1007,6 +1321,9 @@ const handleServiceStation = () => {
       selectedSessionId.value = sessionId;
       // 清除导航项选中状态
       selectedNavItem.value = '';
+      sessionTasks.value = [];
+      taskError.value = '';
+      void fetchSessionTasks(sessionId);
       // 找到选中的会话
       const session = sessions.value.find(s => s.session_id === sessionId);
       if (session) session.unread_tasks = 0;
@@ -1093,6 +1410,146 @@ const handleServiceStation = () => {
       }
     };
     const loadOlderMessages = () => nextBeforeId.value ? loadMessagePage(true) : Promise.resolve();
+
+    const isActiveRequest = (request) => activeRequest?.id === request.id
+      && selectedSessionId.value === request.sessionId
+      && selectedProjectId.value === request.projectId
+      && authGeneration === request.authGeneration;
+
+    const waitBeforeTaskReconnect = (attempt) => new Promise(resolve => {
+      window.setTimeout(resolve, Math.min(2000, 400 * (attempt + 1)));
+    });
+
+    const consumeSSEResponse = async (request, response) => {
+      if (!response.ok) throw new Error(await readErrorMessage(response, '读取任务事件失败'));
+      if (!response.body) throw new Error('服务没有返回事件流');
+      request.reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { done, value } = await request.reader.read();
+        if (!isActiveRequest(request)) return false;
+        if (done) {
+          buffer += decoder.decode();
+          if (buffer.trim()) processSSEData(buffer);
+          return request.finished;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        for (let index = 0; index < lines.length - 1; index += 1) {
+          if (lines[index].trim()) processSSEData(lines[index]);
+        }
+        buffer = lines[lines.length - 1];
+      }
+    };
+
+    const subscribeToTaskEvents = async (request) => {
+      let attempt = 0;
+      while (isActiveRequest(request) && !request.finished && attempt < 4) {
+        try {
+          const response = await authFetch(`/api/tasks/${encodeURIComponent(request.taskRunId)}/events`, {
+            signal: request.controller.signal,
+          });
+          const finished = await consumeSSEResponse(request, response);
+          if (finished || !isActiveRequest(request)) return Boolean(finished);
+          const statusResponse = await authFetch(`/api/tasks/${encodeURIComponent(request.taskRunId)}`, {
+            signal: request.controller.signal,
+          });
+          if (statusResponse.ok) {
+            const status = await readJsonResponse(statusResponse);
+            if (['completed', 'failed', 'cancelled'].includes(status.status)) {
+              request.finished = true;
+              if (status.status !== 'completed' && status.error) {
+                request.taskFailure = status.error;
+              }
+              return true;
+            }
+          }
+        } catch (error) {
+          if (error.name === 'AbortError' || !isActiveRequest(request)) throw error;
+        }
+        if (!isActiveRequest(request)) return false;
+        attempt += 1;
+        await waitBeforeTaskReconnect(attempt);
+      }
+      return request.finished;
+    };
+
+    const followTask = async (task) => {
+      if (!taskCanFollow(task) || isProcessing.value || !selectedSessionId.value) return;
+      cancelActiveRequest();
+      const request = {
+        id: ++nextRequestId,
+        sessionId: selectedSessionId.value,
+        projectId: selectedProjectId.value,
+        authGeneration,
+        controller: new AbortController(),
+        reader: null,
+        taskRunId: task.run_id,
+        planId: null,
+        sources: [],
+        seenEventIds: new Set(),
+        finished: false,
+        taskFailure: '',
+        replayMode: true,
+        cancelTaskOnStop: ['queued', 'running'].includes(task.status),
+        reloadArchiveOnFinish: ['queued', 'running'].includes(task.status),
+        detached: false,
+      };
+      activeRequest = request;
+      isProcessing.value = true;
+      try {
+        const finished = await subscribeToTaskEvents(request);
+        if (!finished && isActiveRequest(request)) {
+          throw new Error('任务事件流意外结束，已重试多次');
+        }
+      } catch (error) {
+        if (isActiveRequest(request) && error.name !== 'AbortError') {
+          taskError.value = error.message || '读取任务事件失败';
+          appendVisibleError(taskError.value);
+        }
+      } finally {
+        if (isActiveRequest(request)) {
+          interruptPlan(request);
+          if (request.taskFailure) {
+            taskError.value = request.taskFailure;
+            appendVisibleError(request.taskFailure);
+          }
+          isProcessing.value = false;
+          activeRequest = null;
+          await fetchSessionTasks(request.sessionId);
+          await fetchUserSessions();
+          if (request.reloadArchiveOnFinish && selectedSessionId.value === request.sessionId && !isLoadingMessages.value) {
+            const taskPlans = chatMessages.value
+              .filter(message => message.type === 'PLAN' && message.plan?.run_id === request.taskRunId);
+            await loadMessagePage();
+            if (taskPlans.length && selectedSessionId.value === request.sessionId) {
+              const firstAssistant = chatMessages.value.findIndex(message => message.type === 'assistant');
+              const insertAt = firstAssistant < 0 ? chatMessages.value.length : firstAssistant;
+              chatMessages.value.splice(insertAt, 0, ...taskPlans);
+            }
+          }
+          scrollToBottom();
+        }
+      }
+    };
+
+    const resumeTask = async (task) => {
+      if (!taskCanResume(task) || resumingTaskId.value) return;
+      resumingTaskId.value = task.run_id;
+      taskError.value = '';
+      try {
+        const response = await authFetch(`/api/tasks/${encodeURIComponent(task.run_id)}/resume`, { method: 'POST' });
+        if (!response.ok) throw new Error(await readErrorMessage(response, '恢复任务失败'));
+        const resumed = await readJsonResponse(response);
+        await fetchSessionTasks(task.session_id);
+        if (taskCanFollow(resumed)) await followTask(resumed);
+      } catch (error) {
+        taskError.value = error.message || '恢复任务失败';
+      } finally {
+        resumingTaskId.value = '';
+      }
+    };
     
     // 处理登出
     const handleLogout = () => {
@@ -1124,22 +1581,33 @@ const handleServiceStation = () => {
         }
         cancelActiveRequest();
         if (!selectedSessionId.value) createNewSession();
+        const projectId = selectedProjectId.value;
+        const pluginSelection = requestPluginSelection();
         const request = {
           id: ++nextRequestId,
           sessionId: selectedSessionId.value,
+          projectId,
           authGeneration,
           controller: new AbortController(),
           reader: null,
+          taskRunId: null,
+          cancelTaskOnStop: true,
+          seenEventIds: new Set(),
+          finished: false,
+          taskFailure: '',
+          replayMode: false,
           sources: [],
         };
         activeRequest = request;
         const isCurrent = () => activeRequest?.id === request.id
           && selectedSessionId.value === request.sessionId
+          && selectedProjectId.value === request.projectId
           && authGeneration === request.authGeneration;
         const attachments = [...selectedAttachments.value];
         const modelProfileId = selectedModelProfile.value || null;
         const temporaryModel = modelProfileId ? null : activeTemporaryModel.value;
-        const requestPlugins = [...enabledPlugins.value];
+        const requestPlugins = [...pluginSelection.enabled];
+        const requestConfirmedPlugins = [...pluginSelection.confirmed];
         isProcessing.value = true;
         try {
         const origin = queryNeedsDeviceLocation(queryText)
@@ -1176,7 +1644,8 @@ const handleServiceStation = () => {
           origin,
           model_profile_id: modelProfileId,
           enabled_plugins: requestPlugins,
-          project_id: selectedProjectId.value,
+          confirmed_plugins: requestConfirmedPlugins,
+          project_id: request.projectId,
           work_mode: workMode.value,
           attachment_ids: attachmentIds,
           temporary_model: temporaryModel,
@@ -1204,42 +1673,18 @@ const handleServiceStation = () => {
             throw new Error(await readErrorMessage(response, '发送请求失败'));
           }
           
-          // 处理流式响应
-        request.reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        
-        while (true) {
-          const { done, value } = await request.reader.read();
-          if (!isCurrent()) return;
-          
-          if (done) {
-              buffer += decoder.decode();
-              // 处理最后一块数据
-              if (buffer.trim()) {
-                processSSEData(buffer);
-                buffer = ''; // 清空缓冲区
-              }
-              break;
-            }
-          
-          // 解码数据并累积到缓冲区
-          const chunk = decoder.decode(value, { stream: true });
-          buffer += chunk;
-          
-          // 按行分割并处理完整的行
-          const lines = buffer.split('\n');
-          
-          // 除了最后一行（可能不完整）外，处理所有行
-          for (let i = 0; i < lines.length - 1; i++) {
-            const line = lines[i];
-            if (line.trim()) {
-              processSSEData(line);
-            }
-          }
-          
-          // 保留最后一行作为不完整的缓冲区
-          buffer = lines[lines.length - 1];
+        let streamFinished = false;
+        try {
+          streamFinished = await consumeSSEResponse(request, response);
+        } catch (error) {
+          if (error.name === 'AbortError') throw error;
+          if (!request.taskRunId) throw error;
+        }
+        if (!isCurrent()) return;
+        if (!streamFinished) {
+          if (!request.taskRunId) throw new Error('事件连接中断，且没有取得任务编号，无法恢复订阅');
+          const recovered = await subscribeToTaskEvents(request);
+          if (!recovered && isCurrent()) throw new Error('任务事件连接中断，自动重连后仍未恢复');
         }
           
         } catch (error) {
@@ -1252,6 +1697,9 @@ const handleServiceStation = () => {
         } finally {
           if (isCurrent()) {
           interruptPlan(request);
+          if (request.taskFailure && !chatMessages.value.at(-1)?.content?.includes(request.taskFailure)) {
+            appendVisibleError(request.taskFailure);
+          }
           isProcessing.value = false;
           activeRequest = null;
           
@@ -1269,13 +1717,14 @@ const handleServiceStation = () => {
           
           // 会话请求结束后刷新历史会话区域
           fetchUserSessions();
+          void fetchSessionTasks(request.sessionId);
           userInput.value = '';
           selectedAttachments.value = [];
           activeTemporaryModel.value = null;
           } else if (request.detached) {
             const backgroundSession = sessions.value.find(s => s.session_id === request.sessionId);
             if (backgroundSession) backgroundSession.unread_tasks = (backgroundSession.unread_tasks || 0) + 1;
-            // Refresh metadata so a completed answer is visible after switching back.
+            // 刷新会话元数据，确保切回会话时能看到已完成的回答。
             fetchUserSessions();
           }
         }
@@ -1285,6 +1734,18 @@ const handleServiceStation = () => {
     const processSSEData = (data) => {
         const parsedData = parseSSELine(data);
         if (parsedData) {
+              const eventId = parsedData.id;
+              if (eventId && activeRequest?.seenEventIds?.has(eventId)) return;
+              if (eventId && activeRequest?.seenEventIds) activeRequest.seenEventIds.add(eventId);
+              if (parsedData.task?.run_id && activeRequest) {
+                activeRequest.taskRunId = parsedData.task.run_id;
+                return;
+              }
+              const eventMetadata = parsedData.metadata || {};
+              const metadataParts = [];
+              if (eventMetadata.agentName) metadataParts.push(`Agent ${eventMetadata.agentName}`);
+              if (eventMetadata.toolName) metadataParts.push(`工具 ${eventMetadata.toolName}`);
+              if (metadataParts.length) streamTextToProcess(`运行轨迹：${metadataParts.join(' · ')}\n`);
               if (parsedData.content?.contentType === 'sagegpt/plan') {
                 const plan = parsedData.content;
                 if (!activeRequest || typeof plan.run_id !== 'string' || !Array.isArray(plan.steps)) return;
@@ -1297,6 +1758,22 @@ const handleServiceStation = () => {
               }
               if (parsedData.content?.contentType === 'sagegpt/sources') {
                 if (activeRequest) activeRequest.sources = normalizeSources(parsedData.content.sources);
+                return;
+              }
+              if (parsedData.content?.contentType === 'sagegpt/grounding-trace') {
+                const trace = parsedData.content;
+                const phases = {
+                  planning: '查询范围', retrieval: '资料检索', review: '证据审查', workflow: '资料流程',
+                };
+                const states = {
+                  started: '开始', completed: '完成', sufficient: '通过', insufficient: '资料不足',
+                  conflicting: '发现冲突', unverified: '核验未通过', failed: '失败',
+                };
+                const origins = { knowledge: '知识库', web: '网页', attachment: '附件' };
+                const phase = phases[trace.phase] || '资料流程';
+                const status = states[trace.status] || trace.status || '更新';
+                const origin = origins[trace.origin] ? `（${origins[trace.origin]}）` : '';
+                streamTextToProcess(`${phase}${origin}：${status}${trace.detail ? `，${trace.detail}` : ''}\n`);
                 return;
               }
 
@@ -1322,12 +1799,13 @@ const handleServiceStation = () => {
 
                 // 3. 处理结束信号 (如果内容是 FinishMessageBody)
                 if (parsedData.status === 'FINISHED' || parsedData.content.contentType === 'sagegpt/finish') {
+                   if (activeRequest) activeRequest.finished = true;
                    if (
                      parsedData.metadata?.finishReason === 'ERROR'
                      && parsedData.metadata?.errorMessage
-                     && !chatMessages.value.at(-1)?.content?.includes(parsedData.metadata.errorMessage)
                    ) {
-                     appendVisibleError(parsedData.metadata.errorMessage);
+                     if (activeRequest) activeRequest.taskFailure = parsedData.metadata.errorMessage;
+                     else appendVisibleError(parsedData.metadata.errorMessage);
                    }
                    return;
                 }
@@ -1349,7 +1827,7 @@ const handleServiceStation = () => {
 
                 switch (kind) {
                   case 'ANSWER':
-                    streamTextToAnswer(text);
+                    if (!activeRequest?.replayMode) streamTextToAnswer(text);
                     break;
 
                   case 'THINKING':
@@ -1445,10 +1923,18 @@ const handleServiceStation = () => {
         fetchModelProfiles();
         fetchPlugins();
         fetchProjects();
+        openPreviewFromHash();
       }
     });
     watch(selectedProjectId, async (workspaceId, previousId) => {
       if (!isLoggedIn.value || workspaceId === previousId) return;
+      cancelActiveRequest();
+      workspaceDeleteError.value = '';
+      // 工具启用确认只属于当前工作区，切换后从安全的默认能力重新开始。
+      confirmedPlugins.value = [];
+      enabledPlugins.value = defaultPluginsForProject(currentProject());
+      reconcileProjectPlugins();
+      selectedNavItem.value = '';
       selectedSessionId.value = '';
       chatMessages.value = [];
       await fetchUserSessions();
@@ -1468,12 +1954,15 @@ const handleServiceStation = () => {
       // 添加键盘快捷键监听器
       document.addEventListener('keydown', handleKeyDown);
       window.addEventListener('resize', updateViewport);
+      window.addEventListener('hashchange', openPreviewFromHash);
+      openPreviewFromHash();
     });
     
     onUnmounted(() => {
       // 移除键盘快捷键监听器
       document.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('resize', updateViewport);
+      window.removeEventListener('hashchange', openPreviewFromHash);
       authGeneration += 1;
       locationGeneration += 1;
       cancelActiveRequest();
@@ -1520,15 +2009,21 @@ const handleServiceStation = () => {
       currentLocation,
       modelProfiles,
       selectedModelProfile,
-      showModelConfig, customModel, customModelMode, modelConfigMessage, applyCustomModel,
+      showModelConfig, customModel, customModelMode, modelConfigMessage, applyCustomModel, deleteCurrentModelProfile,
       selectedAttachments, attachmentInputRef, selectAttachments, removeSelectedAttachment, deleteAttachment,
       plugins,
       projects, createWorkspace,
-      showWorkspaceCreate, workspaceName, workspaceCreateError,
+      deleteCurrentWorkspace,
+      showWorkspaceCreate, workspaceName, workspaceCreateError, workspaceDeleteError, deletingWorkspaceId,
       selectedProjectId,
+      projectAllowsPlugin,
       workMode, workModes,
       enabledPlugins,
-      toolsExpanded,
+      confirmedPlugins,
+      toggleOptionalPlugin,
+      toggleCorePlugin,
+      pluginDescription,
+      pluginWorkspace, isLoadingPlugins, pluginLoadError, fetchPlugins, handleTools, returnToChat,
       locationButtonTitle,
       refreshLocation,
       handleSend,
@@ -1542,6 +2037,9 @@ const handleServiceStation = () => {
       isLoadingSessions,
       nextSessionPage, nextBeforeId, isLoadingMessages, messageHistoryError, sessionListError,
       loadOlderMessages, loadMessagePage,
+      sessionTasks, isLoadingTasks, taskError, resumingTaskId,
+      refreshSessionTasks, taskStatusLabel, taskCanFollow, taskActionLabel, taskCanResume,
+      followTask, resumeTask,
       showSessions,
       toggleSessions,
       // 导航栏相关
@@ -1550,6 +2048,8 @@ const handleServiceStation = () => {
       workspaceTitle,
       handleKnowledgeBase,
       handleMemory,
+      handleFiles,
+      previewArtifactId, openFilePreview, closeFilePreview,
   handleNetworkSearch,
   handleServiceStation,
       selectSession,
@@ -1574,6 +2074,9 @@ const handleServiceStation = () => {
 </script>
 
 <style scoped>
+.manage-tools-link { display: inline-flex; align-items: center; gap: 5px; margin-top: 12px; padding: 6px 9px; border: 1px solid #d5dfdb; border-radius: 6px; color: #147565; background: #fff; font-size: 12px; cursor: pointer; }
+.tools-toggle.selected { color: #147565; background: #e6f2ef; }
+.tools-entry-count { display: grid; place-items: center; min-width: 22px; height: 22px; padding: 0 4px; border-radius: 6px; background: #e6f2ef; color: #147565; font-size: 11px; }
 /* 思考过程头部样式 */
 .thinking-header {
   display: flex;
@@ -2507,6 +3010,25 @@ const handleServiceStation = () => {
   box-sizing: border-box;
 }
 .model-selector { margin-right: 0; min-width: 0; }
+.model-profile-delete, .workspace-delete {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  padding: 0;
+  border: 1px solid #e1c7c4;
+  border-radius: 5px;
+  background: #fff;
+  color: #a33d37;
+  cursor: pointer;
+}
+.model-profile-delete:hover:not(:disabled), .workspace-delete:hover:not(:disabled) { background: #fff4f2; }
+.model-profile-delete:disabled, .workspace-delete:disabled { opacity: .5; cursor: wait; }
+.project-selector { position: relative; }
+.project-selector > .workspace-delete { position: absolute; right: 0; bottom: 4px; }
+.project-selector select { padding-right: 44px; }
+.project-selector > .workspace-create-error { display: block; margin-top: 5px; }
 .model-config-button, .mobile-sidebar-toggle {
   min-height: 36px;
   border: 1px solid #d4dbe2;
@@ -2579,6 +3101,18 @@ const handleServiceStation = () => {
 .history-page-button { margin: 6px 0; padding: 6px 10px; border: 0; background: transparent; color: #147565; cursor: pointer; font-size: 13px; }
 .history-page-button:disabled { opacity: .5; cursor: not-allowed; }
 .history-error { display: block; color: #ad3d3d; font-size: 13px; padding: 6px; }
+.task-status-panel { width: min(100%, var(--reading-width)); box-sizing: border-box; margin: 0 auto 18px; padding: 12px 14px; border: 1px solid #d7dfdc; border-radius: 6px; background: #f7faf9; }
+.task-status-header, .task-status-row, .task-status-actions { display: flex; align-items: center; }
+.task-status-header { justify-content: space-between; margin-bottom: 6px; color: #263b36; }
+.task-status-row { justify-content: space-between; gap: 16px; padding: 9px 0; border-top: 1px solid #e3e9e7; }
+.task-status-copy { display: grid; min-width: 0; gap: 3px; }
+.task-status-name { font-size: 13px; font-weight: 600; color: #334b45; }
+.task-status-copy small { color: #6b7773; font-size: 11px; }
+.task-status-error { color: #a33d37; font-size: 12px; overflow-wrap: anywhere; }
+.task-status-actions { flex: 0 0 auto; gap: 6px; }
+.task-action-button, .task-refresh-button { min-height: 30px; padding: 4px 9px; border: 1px solid #ccd8d4; border-radius: 4px; background: #fff; color: #28594e; cursor: pointer; font-size: 12px; }
+.task-action-button.primary { border-color: #147565; background: #147565; color: #fff; }
+.task-action-button:disabled, .task-refresh-button:disabled { opacity: .55; cursor: wait; }
 .session-item { border: 0; text-align: left; min-height: 38px; box-sizing: border-box; display: flex; align-items: center; gap: 4px; }
 .session-item.selected { background: #eaf1ef; border: 0; box-shadow: none; }
 .session-info { min-width: 0; width: 100%; }
@@ -2609,6 +3143,8 @@ const handleServiceStation = () => {
   .workspace-title h1 { font-size: 14px; }
   .model-selector select { width: 90px; max-width: 22vw; padding-left: 6px; }
   .chat-message-container { padding: 22px 14px; scrollbar-gutter: auto; }
+  .task-status-row { align-items: flex-start; }
+  .task-status-actions { flex-wrap: wrap; justify-content: flex-end; }
   .input-container { width: calc(100% - 28px); margin-bottom: 14px; }
   .brand-copy { display: grid; }
 }

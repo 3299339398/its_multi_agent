@@ -12,7 +12,7 @@ def is_in_china(longitude: float, latitude: float) -> bool:
 
 
 def wgs84_to_gcj02(longitude: float, latitude: float) -> tuple[float, float]:
-    """Convert GPS WGS84 coordinates to GCJ02 inside mainland China."""
+    """将中国大陆范围内的 GPS WGS84 坐标转换为 GCJ02 坐标。"""
     if not is_in_china(longitude, latitude):
         return longitude, latitude
 
@@ -62,7 +62,7 @@ def to_bd09ll(
 
 
 def bd09mc_to_bd09(longitude: float, latitude: float) -> tuple[float, float]:
-    """Convert Baidu Mercator coordinates to Baidu latitude/longitude."""
+    """将百度墨卡托坐标转换为百度经纬度坐标。"""
     if abs(latitude) < 1e-6 or abs(longitude) < 1e-6:
         return 0.0, 0.0
     lng = longitude / 20037508.34 * 180

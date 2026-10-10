@@ -2,14 +2,17 @@ from its_multi_agent.backend.app.infrastructure.database.database_pool import po
 import json
 from pymysql.cursors import DictCursor
 from agents import RunContextWrapper, function_tool
-from its_multi_agent.backend.app.infrastructure.tools.mcp.mcp_servers import baidu_mcp_client
+from its_multi_agent.backend.app.infrastructure.tools.mcp.mcp_servers import map_mcp_client_for
 from its_multi_agent.backend.app.infrastructure.logging.logger import logger
 from its_multi_agent.backend.app.infrastructure.maps.origin import (
     device_origin_payload,
     normalize_explicit_address,
 )
 from its_multi_agent.backend.app.schemas.agent_context import AgentRequestContext
-from its_multi_agent.backend.app.services.agent_hooks import agent_hooks, AgentPolicyDenied
+from its_multi_agent.backend.app.schemas.tool import LocationToolRequest, RepairShopToolRequest
+from its_multi_agent.backend.app.services.agent_hooks import (
+    agent_hooks, AgentPolicyDenied, tool_allowed, tool_confirmed,
+)
 
 
 @function_tool
@@ -37,10 +40,19 @@ async def resolve_user_location_from_text(
     """
 
     try:
+        if not tool_allowed(ctx.context, "resolve_user_location_from_text"):
+            return json.dumps({"ok": False, "code": "policy_denied", "error": "当前分支未启用位置解析"}, ensure_ascii=False)
+        if not tool_confirmed(ctx.context, "resolve_user_location_from_text"):
+            return json.dumps({"ok": False, "code": "confirmation_required", "error": "位置服务尚未获得用户确认"}, ensure_ascii=False)
+        request = LocationToolRequest(user_input=user_input)
         await agent_hooks.authorize_tool({"tool_name": "resolve_user_location_from_text", "user_input": user_input,
-                                          "user_id": ctx.context.user_id, "run_id": ctx.context.run_id})
+                                          "user_id": ctx.context.user_id, "run_id": ctx.context.run_id,
+                                          "context": ctx.context})
     except AgentPolicyDenied as error:
         return json.dumps({"ok": False, "code": "policy_denied", "error": str(error)}, ensure_ascii=False)
+    except Exception:
+        return json.dumps({"ok": False, "code": "invalid_request", "error": "位置参数无效"}, ensure_ascii=False)
+    user_input = request.user_input
     original_input = user_input
     user_input = normalize_explicit_address(user_input)
 
@@ -50,7 +62,9 @@ async def resolve_user_location_from_text(
             logger.debug(f"[Location] Trying geocode for: '{user_input}'")
 
             # 3.1 调用MCP工具 百度地理编码
-            geo_result = await baidu_mcp_client.call_tool(tool_name="map_geocode", arguments={"address": user_input})
+            geo_result = await map_mcp_client_for(ctx.context).call_tool(
+                tool_name="map_geocode", arguments={"address": user_input}
+            )
 
             # 3.2 MCP 返回的复杂结构
             text = json.loads(geo_result.content[0].text)
@@ -61,6 +75,7 @@ async def resolve_user_location_from_text(
             if "lat" in location and "lng" in location:
                 lat = float(location["lat"])
                 lng = float(location["lng"])
+                RepairShopToolRequest(lat=lat, lng=lng)
                 logger.info(f"[Location] Geocode success: '{user_input}' → ({lat}, {lng})")
                 return json.dumps({
                     "ok": True,
@@ -104,6 +119,7 @@ async def resolve_user_location_from_text(
 
 @function_tool
 def query_nearest_repair_shops_by_coords(
+        ctx: RunContextWrapper[AgentRequestContext],
         lat: float,
         lng: float,
         limit: int = 3,
@@ -124,10 +140,23 @@ def query_nearest_repair_shops_by_coords(
         str: JSON 格式的查询结果，包含最近的维修站列表。
     """
     try:
+        if not tool_allowed(ctx.context, "query_nearest_repair_shops_by_coords"):
+            return json.dumps({"ok": False, "code": "policy_denied", "error": "当前分支未启用服务站查询"}, ensure_ascii=False)
+        if not tool_confirmed(ctx.context, "query_nearest_repair_shops_by_coords"):
+            return json.dumps({"ok": False, "code": "confirmation_required", "error": "服务站查询尚未获得用户确认"}, ensure_ascii=False)
+        request = RepairShopToolRequest(
+            lat=lat, lng=lng, limit=limit, brand=brand, repair_type=repair_type,
+        )
         agent_hooks.authorize_tool_sync({"tool_name": "query_nearest_repair_shops_by_coords", "lat": lat, "lng": lng,
-                                         "limit": limit, "brand": brand, "repair_type": repair_type})
+                                         "limit": limit, "brand": brand, "repair_type": repair_type,
+                                         "context": ctx.context})
     except AgentPolicyDenied as error:
         return json.dumps({"ok": False, "code": "policy_denied", "error": str(error)}, ensure_ascii=False)
+    except Exception:
+        return json.dumps({"ok": False, "code": "invalid_request", "error": "服务站查询参数无效"}, ensure_ascii=False)
+    lat, lng, limit, brand, repair_type = (
+        request.lat, request.lng, request.limit, request.brand, request.repair_type,
+    )
     connection = None
     cursor = None
     try:
@@ -141,7 +170,6 @@ def query_nearest_repair_shops_by_coords(
         # 6371 把计算出来的“弧度角度”转化为实际的“地面距离”
         # radians()：经纬度通常是 角度 (Degrees) 三角函数必须使用 弧度 (Radians)
 
-        limit = max(1, min(int(limit), 10))
         brand = brand.strip()
         repair_type = repair_type.strip()
         sql = """
@@ -208,11 +236,12 @@ def query_nearest_repair_shops_by_coords(
             }
         }, ensure_ascii=False, default=str)
 
-    except Exception as e:
-        logger.error(f"[NearestShops] DB query failed: {e}", exc_info=True)
+    except Exception:
+        logger.exception("[NearestShops] DB query failed")
         return json.dumps({
             "ok": False,
-            "error": f"数据库查询失败: {str(e)}",
+            "code": "service_unavailable",
+            "error": "服务站查询暂时不可用",
             "query": {"lat": lat, "lng": lng, "limit": limit}
         }, ensure_ascii=False)
     finally:

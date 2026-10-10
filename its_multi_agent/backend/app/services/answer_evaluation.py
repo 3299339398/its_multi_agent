@@ -1,4 +1,4 @@
-"""Evaluate routing contracts or observed predictions without provider calls."""
+"""在不调用模型服务的情况下，评估路由契约或已有预测结果。"""
 
 import argparse
 import json
