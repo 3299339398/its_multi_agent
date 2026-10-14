@@ -28,8 +28,14 @@ class ContextBuilder:
             cached = self._cache.get(user_id, session_id)
             if cached:
                 cleaned = self._sanitize_cached_context(cached)
-                self._cache.set(user_id, session_id, cleaned)
-                return cleaned
+                visible = [message for message in cleaned if message.get("role") != "system"]
+                limit = max(2, max_turn * 2)
+                bounded = [
+                    *[message for message in cleaned if message.get("role") == "system"],
+                    *visible[-limit:],
+                ]
+                self._cache.set(user_id, session_id, bounded)
+                return bounded
 
         system_messages = self._base_system_messages(history)
         visible_messages = [message for message in history if message.get("role") != "system"]

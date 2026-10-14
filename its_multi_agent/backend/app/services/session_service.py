@@ -11,14 +11,15 @@ class SessionService:
 
     DEFAULT_SESSION_ID = "default_session"
     # 仅保留当前需要的消息；更早的内容仍保存在 SQLite 归档和摘要中。
-    DEFAULT_CONTEXT_MESSAGES = 40
+    DEFAULT_MAX_TURNS = 20
+    DEFAULT_CONTEXT_MESSAGES = DEFAULT_MAX_TURNS * 2
 
     def __init__(self):
         self._repo = session_repository
         self._cache = context_cache
 
     def prepare_history(
-        self, user_id: str, session_id: str, user_input: str, max_turn: int = 20,
+        self, user_id: str, session_id: str, user_input: str, max_turn: int = DEFAULT_MAX_TURNS,
         memory_context: str = "", attachments: List[Dict[str, Any]] | None = None,
         workspace_id: str = "default",
     ) -> List[Dict[str, Any]]:
@@ -34,7 +35,9 @@ class SessionService:
         if cached_context is not None:
             return cached_context
         full_history = [self._system_message(target_session_id)] + (
-            self._repo.load_recent_session(user_id, target_session_id, max(40, max_turn * 2)) or []
+            self._repo.load_recent_session(
+                user_id, target_session_id, self._context_limit(max_turn),
+            ) or []
         )
         return context_builder.build(
             user_id, target_session_id, full_history, max_turn,
@@ -48,7 +51,10 @@ class SessionService:
             return [self._system_message(target_session_id)]
         return history
 
-    def save_history(self, user_id: str, session_id: str, chat_history: List[Dict[str, Any]], workspace_id: str = "default") -> None:
+    def save_history(
+        self, user_id: str, session_id: str, chat_history: List[Dict[str, Any]],
+        workspace_id: str = "default", max_turn: int = DEFAULT_MAX_TURNS,
+    ) -> None:
         if not chat_history:
             return
         target_session_id = self._scoped_session_id(session_id, workspace_id)
@@ -56,9 +62,18 @@ class SessionService:
         if assistant_messages:
             self._repo.append_message(user_id, target_session_id, assistant_messages[-1])
             history = [self._system_message(target_session_id)] + (
-                self._repo.load_recent_session(user_id, target_session_id, 40) or []
+                self._repo.load_recent_session(
+                    user_id, target_session_id, self._context_limit(max_turn),
+                ) or []
             )
-            context_builder.build(user_id, target_session_id, history, force_refresh=True)
+            context_builder.build(
+                user_id, target_session_id, history, max_turn=max_turn, force_refresh=True,
+            )
+
+    @classmethod
+    def _context_limit(cls, max_turn: int) -> int:
+        """返回归档回源上限，至少覆盖默认 20 轮的缓存窗口。"""
+        return max(cls.DEFAULT_CONTEXT_MESSAGES, max(2, int(max_turn) * 2))
 
     def get_all_sessions_memory(self, user_id: str) -> List[Dict[str, Any]]:
         formatted_sessions = []

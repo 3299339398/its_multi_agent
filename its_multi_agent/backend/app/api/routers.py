@@ -48,7 +48,7 @@ def _artifact_public(item):
     }
 
 
-@router.post("/api/files", summary="Create a user-scoped text file")
+@router.post("/api/files", summary="创建用户专属文本文件")
 def create_file_artifact(request: FileArtifactCreateRequest, user: Dict[str, str] = Depends(get_current_user)):
     try:
         item = file_artifact_service.create(user["user_id"], request.filename, request.content,
@@ -58,14 +58,14 @@ def create_file_artifact(request: FileArtifactCreateRequest, user: Dict[str, str
     return _artifact_public(item)
 
 
-@router.get("/api/files", summary="List current user's generated files")
+@router.get("/api/files", summary="列出当前用户生成的文件")
 def list_file_artifacts(session_id: str | None = Query(None, pattern=r"^[A-Za-z0-9_-]+$"),
                         run_id: str | None = Query(None, pattern=r"^[A-Za-z0-9_-]+$"),
                         user: Dict[str, str] = Depends(get_current_user)):
     return {"files": [_artifact_public(item) for item in file_artifact_service.list(user["user_id"], session_id=session_id, run_id=run_id)]}
 
 
-@router.get("/api/files/{artifact_id}", summary="Get generated file metadata")
+@router.get("/api/files/{artifact_id}", summary="获取生成文件的元数据")
 def get_file_artifact(artifact_id: str, user: Dict[str, str] = Depends(get_current_user)):
     try:
         return _artifact_public(file_artifact_service.get(user["user_id"], artifact_id))
@@ -73,7 +73,7 @@ def get_file_artifact(artifact_id: str, user: Dict[str, str] = Depends(get_curre
         raise HTTPException(status_code=404, detail=str(error)) from error
 
 
-@router.get("/api/files/{artifact_id}/download", summary="Download a generated file")
+@router.get("/api/files/{artifact_id}/download", summary="下载生成的文件")
 def download_file_artifact(artifact_id: str, user: Dict[str, str] = Depends(get_current_user)):
     try:
         item = file_artifact_service.get(user["user_id"], artifact_id)
@@ -89,7 +89,7 @@ def download_file_artifact(artifact_id: str, user: Dict[str, str] = Depends(get_
     )
 
 
-@router.delete("/api/files/{artifact_id}", summary="Delete a generated file")
+@router.delete("/api/files/{artifact_id}", summary="删除生成的文件")
 def delete_file_artifact(artifact_id: str, user: Dict[str, str] = Depends(get_current_user)):
     try:
         file_artifact_service.delete(user["user_id"], artifact_id)
@@ -126,7 +126,7 @@ def preview_file_artifact(ticket: str):
     })
 
 
-@router.post("/api/attachments", summary="Upload a chat attachment")
+@router.post("/api/attachments", summary="上传聊天附件")
 async def upload_chat_attachment(
     file: UploadFile = File(...),
     user: Dict[str, str] = Depends(get_current_user),
@@ -138,7 +138,7 @@ async def upload_chat_attachment(
     return {key: item[key] for key in ("id", "name", "kind", "media_type", "size", "sha256")}
 
 
-@router.delete("/api/attachments/{attachment_id}", summary="Delete a chat attachment")
+@router.delete("/api/attachments/{attachment_id}", summary="删除聊天附件")
 def delete_chat_attachment(attachment_id: str, user: Dict[str, str] = Depends(get_current_user)):
     try:
         attachment_service.delete(user["user_id"], attachment_id)
@@ -149,7 +149,7 @@ def delete_chat_attachment(attachment_id: str, user: Dict[str, str] = Depends(ge
     return {"deleted": True, "id": attachment_id}
 
 
-@router.post("/api/auth/login", summary="User login")
+@router.post("/api/auth/login", summary="用户登录")
 def login(request: LoginRequest):
     user = auth_service.authenticate(request.username, request.password)
     if not user:
@@ -166,7 +166,7 @@ def login(request: LoginRequest):
     }
 
 
-@router.post("/api/auth/register", summary="Register a client user")
+@router.post("/api/auth/register", summary="注册客户端用户")
 def register(request: RegisterRequest):
     try:
         user = auth_service.register(request.username, request.password)
@@ -185,12 +185,12 @@ def register(request: RegisterRequest):
     }
 
 
-@router.get("/api/auth/me", summary="Current user")
+@router.get("/api/auth/me", summary="当前用户信息")
 def current_user(user: Dict[str, str] = Depends(get_current_user)):
     return {"user": user}
 
 
-@router.get("/api/model-profiles", summary="Available model profiles")
+@router.get("/api/model-profiles", summary="可用的模型配置")
 def available_model_profiles(user: Dict[str, str] = Depends(get_current_user)):
     """仅公开模型元数据，凭据始终保留在服务端。"""
     profiles = []
@@ -200,7 +200,7 @@ def available_model_profiles(user: Dict[str, str] = Depends(get_current_user)):
     return {"profiles": profiles + user_model_profiles.list_public(user["user_id"])}
 
 
-@router.post("/api/model-profiles", summary="Save a personal model profile")
+@router.post("/api/model-profiles", summary="保存个人模型配置")
 def save_model_profile(request: ModelProfileCreate, user: Dict[str, str] = Depends(get_current_user)):
     if len(request.api_key) < 8:
         raise HTTPException(status_code=400, detail="API Key 长度不合法")
@@ -213,14 +213,14 @@ def save_model_profile(request: ModelProfileCreate, user: Dict[str, str] = Depen
     return {"id": profile_id, "name": request.name, "message": "模型配置已保存"}
 
 
-@router.delete("/api/model-profiles/{profile_id}", summary="Delete a personal model profile")
+@router.delete("/api/model-profiles/{profile_id}", summary="删除个人模型配置")
 def delete_model_profile(profile_id: str, user: Dict[str, str] = Depends(get_current_user)):
     if not profile_id.startswith("user-") or not user_model_profiles.delete(user["user_id"], profile_id):
         raise HTTPException(status_code=404, detail="模型配置不存在")
     return {"message": "模型配置已删除"}
 
 
-@router.get("/api/plugins", summary="Available agent plugins")
+@router.get("/api/plugins", summary="可用的智能体插件")
 def available_plugins(_user: Dict[str, str] = Depends(get_current_user)):
     return {
         "plugins": [
@@ -238,7 +238,7 @@ def available_plugins(_user: Dict[str, str] = Depends(get_current_user)):
     }
 
 
-@router.get("/api/projects", summary="Available projects")
+@router.get("/api/projects", summary="可用的项目")
 def available_projects(_user: Dict[str, str] = Depends(get_current_user)):
     return {"projects": [
         {"id": project.id, "name": project.name, "description": project.description,
@@ -247,7 +247,7 @@ def available_projects(_user: Dict[str, str] = Depends(get_current_user)):
     ]}
 
 
-@router.get("/api/workspaces", summary="List current user's workspaces")
+@router.get("/api/workspaces", summary="列出当前用户的工作区")
 def list_workspaces(user: Dict[str, str] = Depends(get_current_user)):
     plugins = [plugin.id for plugin in plugin_registry.list_plugins()]
     rows = workspace_repository.list(user["user_id"])
@@ -256,7 +256,7 @@ def list_workspaces(user: Dict[str, str] = Depends(get_current_user)):
     return {"workspaces": [_workspace_public(row) for row in rows]}
 
 
-@router.post("/api/workspaces", summary="Create a workspace")
+@router.post("/api/workspaces", summary="创建工作区")
 def create_workspace(request: WorkspaceCreateRequest, user: Dict[str, str] = Depends(get_current_user)):
     known = {plugin.id for plugin in plugin_registry.list_plugins()}
     unknown = set(request.plugins) - known
@@ -270,7 +270,7 @@ def create_workspace(request: WorkspaceCreateRequest, user: Dict[str, str] = Dep
     return _workspace_public(row)
 
 
-@router.delete("/api/workspaces/{workspace_id}", summary="Delete a workspace")
+@router.delete("/api/workspaces/{workspace_id}", summary="删除工作区")
 def delete_workspace(workspace_id: str, user: Dict[str, str] = Depends(get_current_user)):
     if not workspace_repository.delete(user["user_id"], workspace_id):
         raise HTTPException(status_code=400 if workspace_id == "default" else 404, detail="默认工作区不可删除或工作区不存在")
@@ -282,7 +282,7 @@ def _workspace_public(row):
             "plugins": json.loads(row["plugins_json"] or "[]"), "created_at": row["created_at"]}
 
 
-@router.post("/api/query", summary="Agent chat")
+@router.post("/api/query", summary="智能体聊天")
 async def query(
     request_context: ChatMessageRequest,
     user: Dict[str, str] = Depends(get_current_user),
@@ -304,7 +304,7 @@ async def query(
     )
 
 
-@router.get("/api/tasks/{run_id}", summary="Get chat task status")
+@router.get("/api/tasks/{run_id}", summary="获取聊天任务状态")
 def get_task_status(run_id: str, user: Dict[str, str] = Depends(get_current_user)):
     result = task_manager.get(run_id, user["user_id"])
     if result is None:
@@ -312,7 +312,7 @@ def get_task_status(run_id: str, user: Dict[str, str] = Depends(get_current_user
     return result
 
 
-@router.get("/api/tasks/{run_id}/events", summary="Replay or subscribe to chat task events")
+@router.get("/api/tasks/{run_id}/events", summary="回放或订阅聊天任务事件")
 async def task_events(run_id: str, user: Dict[str, str] = Depends(get_current_user)):
     if task_manager.get(run_id, user["user_id"]) is None:
         raise HTTPException(status_code=404, detail="任务不存在")
@@ -320,19 +320,19 @@ async def task_events(run_id: str, user: Dict[str, str] = Depends(get_current_us
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
-@router.get("/api/sessions/{session_id}/tasks", summary="List chat tasks for a session")
+@router.get("/api/sessions/{session_id}/tasks", summary="列出会话中的聊天任务")
 def session_tasks(session_id: str, user: Dict[str, str] = Depends(get_current_user)):
     return {"tasks": task_manager.list_for_session(session_id, user["user_id"])}
 
 
-@router.post("/api/tasks/{run_id}/cancel", summary="Cancel a chat task")
+@router.post("/api/tasks/{run_id}/cancel", summary="取消聊天任务")
 async def cancel_task(run_id: str, user: Dict[str, str] = Depends(get_current_user)):
     if not await task_manager.cancel(run_id, user["user_id"]):
         raise HTTPException(status_code=404, detail="任务不存在")
     return {"run_id": run_id, "status": "cancelled"}
 
 
-@router.post("/api/tasks/{run_id}/resume", summary="Resume a failed task from its checkpoint")
+@router.post("/api/tasks/{run_id}/resume", summary="从检查点恢复失败的任务")
 async def resume_task(run_id: str, user: Dict[str, str] = Depends(get_current_user)):
     """显式恢复已失败任务；不在服务启动时自动重放有副作用步骤。"""
     try:
@@ -343,7 +343,7 @@ async def resume_task(run_id: str, user: Dict[str, str] = Depends(get_current_us
         raise HTTPException(status_code=409, detail=str(error)) from error
 
 
-@router.get("/api/user_sessions", summary="Current user's chat archives")
+@router.get("/api/user_sessions", summary="当前用户的聊天记录")
 def get_user_sessions(user: Dict[str, str] = Depends(get_current_user),
                       page: int = Query(1, ge=1), page_size: int = Query(30, ge=1, le=100),
                       workspace_id: str = Query("default", pattern=r"^[A-Za-z0-9_-]+$")):
@@ -360,7 +360,7 @@ def get_user_sessions(user: Dict[str, str] = Depends(get_current_user),
         raise HTTPException(status_code=500, detail="读取会话失败") from error
 
 
-@router.get("/api/sessions/{session_id}/messages", summary="Current user's paged session messages")
+@router.get("/api/sessions/{session_id}/messages", summary="分页获取当前用户的会话消息")
 def get_session_messages(session_id: str, page_size: int = Query(20, ge=1, le=100),
                          before_id: int | None = Query(None, ge=1),
                          workspace_id: str = Query("default", pattern=r"^[A-Za-z0-9_-]+$"),
@@ -371,7 +371,7 @@ def get_session_messages(session_id: str, page_size: int = Query(20, ge=1, le=10
     return result
 
 
-@router.delete("/api/sessions/{session_id}", summary="Delete current user's chat archive")
+@router.delete("/api/sessions/{session_id}", summary="删除当前用户的聊天记录")
 def delete_user_session(session_id: str, workspace_id: str = Query("default", pattern=r"^[A-Za-z0-9_-]+$"),
                         user: Dict[str, str] = Depends(get_current_user)):
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", session_id):
@@ -381,7 +381,7 @@ def delete_user_session(session_id: str, workspace_id: str = Query("default", pa
     return {"success": True, "user_id": user["user_id"], "session_id": session_id}
 
 
-@router.get("/api/memories", summary="Current user's long-term memories")
+@router.get("/api/memories", summary="当前用户的长期记忆")
 def get_user_memories(workspace_id: str = Query("default", pattern=r"^[A-Za-z0-9_-]+$"), user: Dict[str, str] = Depends(get_current_user)):
     if not memory_service.available:
         raise HTTPException(status_code=503, detail="长期记忆服务暂时不可用")
@@ -393,7 +393,7 @@ def get_user_memories(workspace_id: str = Query("default", pattern=r"^[A-Za-z0-9
     }
 
 
-@router.delete("/api/memories/{memory_id}", summary="Delete a long-term memory")
+@router.delete("/api/memories/{memory_id}", summary="删除长期记忆")
 def delete_user_memory(
     memory_id: int,
     workspace_id: str = Query("default", pattern=r"^[A-Za-z0-9_-]+$"),
@@ -409,7 +409,7 @@ def delete_user_memory(
     return {"success": True, "user_id": user_id, "memory_id": memory_id}
 
 
-@router.post("/api/knowledge/query", summary="Authenticated knowledge query")
+@router.post("/api/knowledge/query", summary="认证知识库查询")
 async def query_knowledge(
     request: KnowledgeQueryRequest,
     _user: Dict[str, str] = Depends(get_current_user),
@@ -417,7 +417,7 @@ async def query_knowledge(
     return await _forward_knowledge_request("/query", json=request.model_dump())
 
 
-@router.post("/api/knowledge/upload", summary="Authenticated knowledge upload")
+@router.post("/api/knowledge/upload", summary="认证知识库上传")
 async def upload_knowledge_document(
     file: UploadFile = File(...),
     knowledge_space: str = Form(
@@ -447,7 +447,7 @@ async def upload_knowledge_document(
     )
 
 
-@router.get("/api/knowledge/documents", summary="Admin knowledge documents")
+@router.get("/api/knowledge/documents", summary="管理员知识库文档")
 async def list_knowledge_documents(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -473,14 +473,14 @@ async def list_knowledge_documents(
     )
 
 
-@router.get("/api/knowledge/documents/statistics", summary="Admin knowledge statistics")
+@router.get("/api/knowledge/documents/statistics", summary="管理员知识库统计信息")
 async def knowledge_document_statistics(
     _user: Dict[str, str] = Depends(get_current_admin),
 ):
     return await _forward_knowledge_request("/documents/statistics", method="GET")
 
 
-@router.delete("/api/knowledge/documents/{document_hash}", summary="Delete knowledge document")
+@router.delete("/api/knowledge/documents/{document_hash}", summary="删除知识库文档")
 async def delete_knowledge_document(
     document_hash: str,
     user: Dict[str, str] = Depends(get_current_admin),
@@ -496,12 +496,12 @@ async def delete_knowledge_document(
     )
 
 
-@router.get("/api/knowledge/tasks/{task_id}", summary="Get knowledge ingestion task")
+@router.get("/api/knowledge/tasks/{task_id}", summary="获取知识库导入任务")
 async def get_knowledge_task(task_id: str, _user: Dict[str, str] = Depends(get_current_admin)):
     return await _forward_knowledge_request(f"/tasks/{task_id}", method="GET")
 
 
-@router.get("/api/knowledge/tasks", summary="List knowledge ingestion tasks")
+@router.get("/api/knowledge/tasks", summary="列出知识库导入任务")
 async def list_knowledge_tasks(
     page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
     _user: Dict[str, str] = Depends(get_current_admin),
@@ -509,7 +509,7 @@ async def list_knowledge_tasks(
     return await _forward_knowledge_request("/tasks", method="GET", params={"page": page, "page_size": page_size})
 
 
-@router.post("/api/knowledge/tasks/{task_id}/retry", summary="Retry knowledge ingestion task")
+@router.post("/api/knowledge/tasks/{task_id}/retry", summary="重试知识库导入任务")
 async def retry_knowledge_task(task_id: str, _user: Dict[str, str] = Depends(get_current_admin)):
     return await _forward_knowledge_request(f"/tasks/{task_id}/retry", method="POST")
 

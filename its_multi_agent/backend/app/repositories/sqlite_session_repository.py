@@ -121,7 +121,7 @@ class SQLiteSessionRepository:
             message["sources"] = sources
         return message
 
-    def load_recent_session(self, user_id: str, session_id: str, limit: int = 12) -> Optional[List[Dict[str, Any]]]:
+    def load_recent_session(self, user_id: str, session_id: str, limit: int = 40) -> Optional[List[Dict[str, Any]]]:
         with self._connect() as connection:
             if connection.execute("SELECT 1 FROM sessions WHERE user_id = ? AND session_id = ?", (user_id, session_id)).fetchone() is None:
                 return None

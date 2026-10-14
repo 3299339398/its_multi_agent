@@ -1,5 +1,6 @@
 import logging
 import re
+import unicodedata
 from io import BytesIO
 from pathlib import Path
 from threading import Lock
@@ -26,9 +27,10 @@ class DocumentExtractor:
         if extension == ".md":
             return cls._load_markdown(file_path)
         if extension == ".txt":
-            return TextLoader(
+            documents = TextLoader(
                 file_path=file_path, encoding="utf-8", autodetect_encoding=True
             ).load()
+            return [cls._clean_document(document) for document in documents]
         if extension == ".pdf":
             return cls._load_pdf(file_path)
         if extension == ".docx":
@@ -128,12 +130,18 @@ class DocumentExtractor:
                     image = pdfium_document[page_index].render(scale=scale).to_pil()
                     ocr_text = cls._recognize_image(image)
                 page_content = cls._join_unique_text(text, ocr_text)
+                page_content = cls._clean_text(page_content)
                 documents.append(
                     Document(
                         page_content=page_content,
                         metadata={
                             "page": page_index + 1,
                             "ocr_applied": bool(ocr_text),
+                            "extraction_method": (
+                                "text+ocr" if text and ocr_text else
+                                "ocr" if ocr_text else
+                                "text" if text else "empty"
+                            ),
                         },
                     )
                 )
@@ -208,7 +216,11 @@ class DocumentExtractor:
             return blocks
 
         blocks = render_blocks(source, [0])
-        return [Document(page_content="\n\n".join(blocks))]
+        content = cls._clean_text("\n\n".join(blocks))
+        return [Document(
+            page_content=content,
+            metadata={"extraction_method": "docx"},
+        )]
 
     @staticmethod
     def _load_xlsx(file_path: str) -> List[Document]:
@@ -244,8 +256,14 @@ class DocumentExtractor:
                 if rows:
                     documents.append(
                         Document(
-                            page_content=f"工作表: {sheet.title}\n" + "\n".join(rows),
-                            metadata={"sheet": sheet.title},
+                            page_content=cls._clean_text(
+                                f"工作表: {sheet.title}\n" + "\n".join(rows)
+                            ),
+                            metadata={
+                                "sheet": sheet.title,
+                                "sheet_state": sheet.sheet_state,
+                                "extraction_method": "xlsx-cells",
+                            },
                         )
                     )
         finally:
@@ -290,6 +308,45 @@ class DocumentExtractor:
     def _join_unique_text(text: str, ocr_text: str) -> str:
         if not text:
             return ocr_text
-        if not ocr_text or ocr_text in text:
+        if not ocr_text or DocumentExtractor._is_text_present(text, ocr_text):
             return text
         return f"{text}\n\nOCR 提取内容:\n{ocr_text}"
+
+    @staticmethod
+    def _is_text_present(original: str, candidate: str) -> bool:
+        """判断 OCR 结果是否已经存在，兼容换行和空白差异。"""
+        compact_original = re.sub(r"\s+", "", original)
+        compact_candidate = re.sub(r"\s+", "", candidate)
+        return bool(compact_candidate) and compact_candidate in compact_original
+
+    @staticmethod
+    def _clean_text(value: str) -> str:
+        """清理跨格式抽取噪声，同时保留表格和代码中的有效换行。"""
+        if not value:
+            return ""
+        normalized = unicodedata.normalize("NFC", str(value))
+        normalized = normalized.replace("\r\n", "\n").replace("\r", "\n")
+        # 去掉不可见控制字符和零宽字符；制表符、换行和普通空格保留。
+        normalized = "".join(
+            char for char in normalized
+            if char in {"\n", "\t"} or not unicodedata.category(char).startswith("C")
+        )
+        lines = [line.rstrip() for line in normalized.split("\n")]
+        cleaned_lines = []
+        blank_count = 0
+        for line in lines:
+            if line.strip():
+                blank_count = 0
+                cleaned_lines.append(line)
+            elif blank_count < 2:
+                blank_count += 1
+                cleaned_lines.append("")
+        return "\n".join(cleaned_lines).strip()
+
+    @classmethod
+    def _clean_document(cls, document: Document) -> Document:
+        """清洗普通文本文档，保留 LangChain metadata。"""
+        return Document(
+            page_content=cls._clean_text(document.page_content),
+            metadata=dict(document.metadata),
+        )
