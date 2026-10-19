@@ -16,7 +16,8 @@ from pydantic import BaseModel, Field
 from its_multi_agent.backend.app.infrastructure.tools.local.knowledge_base import request_knowledge
 from its_multi_agent.backend.app.infrastructure.tools.local.web_search import request_web_search
 from its_multi_agent.backend.app.services.answer_routing import (
-    RoutePlan, attachment_question, identifiers, private_question, route_by_rules, service_requested, validate_plan,
+    RoutePlan, attachment_question, effective_previous_question, identifiers,
+    private_question, route_by_rules, service_requested, validate_plan,
 )
 from its_multi_agent.backend.app.services.conversation_memory import memory_from_history, memory_quotes
 from its_multi_agent.backend.app.services.context_budget import ContextBudgeter, TokenLimits, context_budgeter
@@ -242,8 +243,16 @@ class GroundingWorkflow:
         available = set(available_tools if available_tools is not None else (
             "query_knowledge", "search_web", "query_service_station_and_navigate",
         ))
-        previous = next((item["content"] for item in reversed(history)
-                         if item.get("role") == "user" and isinstance(item.get("content"), str)), "")
+        # 来源切换指令本身没有查询主题。跳过它，寻找最近一条有实际内容的用户问题，
+        # 这样“请从知识库内查询”可以继承上一轮的主题。
+        previous = ""
+        for item in reversed(history):
+            if item.get("role") != "user" or not isinstance(item.get("content"), str):
+                continue
+            candidate = effective_previous_question(item["content"])
+            if candidate:
+                previous = candidate
+                break
         memory_context = memory_quotes(memory_from_history(history))
         if not previous and memory_context:
             previous = "较早会话记录可用，请结合 conversation_memory 确认对象。"

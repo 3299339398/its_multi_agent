@@ -33,6 +33,14 @@ _NO_WEB = re.compile(r"(?:不要|禁止|别|无需|不能).{0,4}(?:联网|上网
                      r"\b(?:do not|don't|no) (?:search|browse|web)\b", re.I)
 _ATTACHMENT = re.compile(r"附件|上传|这份(?:文件|文档|资料|合同)|\b(?:attachment|uploaded)\b", re.I)
 _FOLLOW_UP = re.compile(r"^(?:那)?(?:它|这个|那个|上述|刚才|上一个)|\b(?:it|that one)\b", re.I)
+_KNOWLEDGE_LOOKUP_COMMAND = re.compile(
+    r"^(?:请|帮我|麻烦)?\s*(?:从|去|在)?\s*(?:知识库|知识库内|知识空间|内部资料|资料库)"
+    r"\s*(?:中|内|里)?\s*(?:查询|查找|检索|搜索|查一下|找一下|看一下)"
+    r"\s*(?:相关内容|资料|信息)?\s*[。！？!?，,\s]*$|"
+    r"^(?:请|帮我|麻烦)?\s*(?:查询|查找|检索|搜索|查一下|找一下)"
+    r"\s*(?:知识库|知识空间|内部资料|资料库)\s*[。！？!?，,\s]*$",
+    re.I,
+)
 _SERVICE = re.compile(r"服务站|附近.{0,8}(?:门店|维修|店)|路线|导航|\b(?:navigate|service station)\b", re.I)
 _DIRECT = re.compile(
     r"^(?:你是(?:哪个|什么)模型|你是谁|你(?:可以|能|可以用来|能够)(?:做什么|干什么)|你有什么功能|当前(?:使用的)?模型(?:是什么)?)"
@@ -84,6 +92,19 @@ def clarify(message: str) -> RoutePlan:
     return RoutePlan(route="clarify", clarification=message)
 
 
+def is_contextual_knowledge_lookup(question: str) -> bool:
+    """判断问题是否只是切换到知识库查询，主题需要从历史继承。"""
+    return bool(_KNOWLEDGE_LOOKUP_COMMAND.fullmatch(question.strip()))
+
+
+def effective_previous_question(previous_question: str) -> str:
+    """清理不可作为查询主题的历史短指令。"""
+    value = (previous_question or "").strip()
+    if not value or is_contextual_knowledge_lookup(value):
+        return ""
+    return value
+
+
 def route_by_rules(question: str, *, has_attachments: bool = False,
                    previous_question: str = "") -> RoutePlan | None:
     text = question.strip()
@@ -91,6 +112,11 @@ def route_by_rules(question: str, *, has_attachments: bool = False,
         return clarify("问题较长，请将资料作为附件提供，并单独说明要查询的问题，以免遗漏条件。")
     if re.fullmatch(r"(?:你好|您好|谢谢|多谢|再见|hello|hi|thanks)[!！。,.，?？\s]*", text, re.I):
         return RoutePlan(route="direct")
+    if is_contextual_knowledge_lookup(text):
+        previous = effective_previous_question(previous_question)
+        if previous:
+            return RoutePlan(route="knowledge", knowledge_query=previous[:5000])
+        return clarify("请说明要从知识库查询的具体主题、对象或问题。")
     if _FOLLOW_UP.search(text):
         return None if previous_question or has_attachments else clarify("请说明你指的是哪个对象、型号或哪份资料。")
     if re.search(r"知识空间|领域\s*[:：]?\s*[\w.-]+|\b(?:knowledge_space|domain)\b", text, re.I):

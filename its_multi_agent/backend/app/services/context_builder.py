@@ -73,11 +73,21 @@ class ContextBuilder:
 
         system_messages = self._base_system_messages(cached)
         visible_messages = [message for message in cached if message.get("role") != "system"]
-        message = {"role": "user", "content": content}
-        if attachments:
-            message["attachments"] = attachments
-        visible_messages.append(message)
         limit = max(2, max_turn * 2)
+        # 缓存可能来自旧版本或此前较小的回源窗口。此时从归档补齐窗口，
+        # 避免“SQLite 有完整历史、Redis 只有少量历史”导致模型上下文忽长忽短。
+        if len(visible_messages) < limit:
+            archived = self._repository.load_recent_session(user_id, session_id, limit) or []
+            archived_visible = [item for item in archived if item.get("role") != "system"]
+            if archived_visible:
+                visible_messages = archived_visible[-limit:]
+        if not visible_messages or visible_messages[-1].get("content") != content:
+            message = {"role": "user", "content": content}
+            if attachments:
+                message["attachments"] = attachments
+            visible_messages.append(message)
+        elif attachments:
+            visible_messages[-1] = {**visible_messages[-1], "attachments": attachments}
         summary = self._repository.get_summary(user_id, session_id)
         context = list(system_messages)
         if summary:
